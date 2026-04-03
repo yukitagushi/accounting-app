@@ -1,13 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  // Demo mode: skip Supabase auth, allow all access
-  // In production, replace with updateSession from @/lib/supabase/middleware
-  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' ||
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL === 'http://127.0.0.1:54321'
+  // Always allow access in demo mode (no Supabase backend)
+  // To enable Supabase auth, set ENABLE_AUTH=true and configure Supabase env vars
+  const enableAuth = process.env.ENABLE_AUTH === 'true'
 
-  if (isDemoMode) {
+  if (!enableAuth) {
     // Redirect root to dashboard
     if (request.nextUrl.pathname === '/') {
       const url = request.nextUrl.clone()
