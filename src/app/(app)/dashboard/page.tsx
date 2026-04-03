@@ -44,7 +44,7 @@ function formatYen(amount: number): string {
 
 function daysOverdue(dueDateStr: string): number {
   const due = new Date(dueDateStr)
-  const now = new Date('2026-04-03')
+  const now = new Date()
   return Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
 }
 

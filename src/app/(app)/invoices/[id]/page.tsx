@@ -123,6 +123,7 @@ export default function InvoiceDetailPage({ params }: PageProps) {
                     支払済みにする
                   </Button>
                 )}
+                {(invoice.status === 'draft' || invoice.status === 'sent') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -133,6 +134,7 @@ export default function InvoiceDetailPage({ params }: PageProps) {
                   <XCircle className="w-3.5 h-3.5" />
                   無効にする
                 </Button>
+                )}
               </>
             )}
             <a

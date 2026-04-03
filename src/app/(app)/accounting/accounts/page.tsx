@@ -276,9 +276,10 @@ export default function AccountsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                onClick={() =>
+                                onClick={() => {
+                                  if (!confirm('この勘定科目を削除しますか？')) return
                                   setAccounts((prev) => prev.filter((a) => a.id !== account.id))
-                                }
+                                }}
                                 className="text-gray-400 hover:text-red-600"
                               >
                                 <X className="w-3.5 h-3.5" />

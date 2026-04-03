@@ -2,12 +2,21 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import type { Invoice, Estimate } from '@/lib/types'
 
-const COMPANY_NAME = '有限会社 竹花自工'
-const COMPANY_REP = '代表取締役 竹花 太郎'
-const COMPANY_ADDRESS = '〒028-0041 岩手県久慈市長内町'
-const COMPANY_TEL = 'TEL 0194-52-3955  FAX 0194-52-3956'
-const COMPANY_REG = '登録番号 T1234567890123'
-const BANK_INFO = '岩手銀行 久慈支店 普通 1234567 ユ）タケハナジコウ'
+const DEFAULT_COMPANY_NAME = '有限会社 竹花自工'
+const DEFAULT_COMPANY_REP = '代表取締役 竹花 太郎'
+const DEFAULT_COMPANY_ADDRESS = '〒028-0041 岩手県久慈市長内町'
+const DEFAULT_COMPANY_TEL = 'TEL 0194-52-3955  FAX 0194-52-3956'
+const DEFAULT_COMPANY_REG = '登録番号 T1234567890123'
+const DEFAULT_BANK_INFO = '岩手銀行 久慈支店 普通 1234567 ユ）タケハナジコウ'
+
+export type CompanyInfo = {
+  name?: string
+  representative?: string
+  address?: string
+  tel?: string
+  registration_number?: string
+  bank_info?: string
+}
 
 function fmt(val: number): string {
   return '¥' + val.toLocaleString('ja-JP')
@@ -37,7 +46,14 @@ function valueCell(cell: ExcelJS.Cell, value: string | number, align: 'left' | '
 function buildWorkbook(
   type: 'invoice' | 'estimate',
   data: Invoice | Estimate,
+  companyInfo?: CompanyInfo,
 ) {
+  const COMPANY_NAME = companyInfo?.name ?? DEFAULT_COMPANY_NAME
+  const COMPANY_REP = companyInfo?.representative ?? DEFAULT_COMPANY_REP
+  const COMPANY_ADDRESS = companyInfo?.address ?? DEFAULT_COMPANY_ADDRESS
+  const COMPANY_TEL = companyInfo?.tel ?? DEFAULT_COMPANY_TEL
+  const COMPANY_REG = companyInfo?.registration_number ?? DEFAULT_COMPANY_REG
+  const BANK_INFO = companyInfo?.bank_info ?? DEFAULT_BANK_INFO
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(type === 'invoice' ? '御請求書' : '御見積書')
 
@@ -167,13 +183,16 @@ function buildWorkbook(
   const laborSubtotal = lines.reduce((sum, l) => sum + (l.labor_amount ?? 0), 0)
   const rawSubtotal = partsSubtotal + laborSubtotal || data.subtotal
   const taxableAmount = rawSubtotal - disc
-  const taxAmount = Math.floor(taxableAmount * 0.1)
+  const taxAmount = lines.reduce((sum, l) => {
+    const lineAmount = (l.parts_amount ?? 0) + (l.labor_amount ?? 0)
+    return sum + Math.floor(lineAmount * (l.tax_rate ?? 0))
+  }, 0)
   const subTotal = taxableAmount + taxAmount
   const grandTotal = subTotal
 
   const totalsData: [string, string][] = [
     ['合計', fmt(partsSubtotal) + '  /  ' + fmt(laborSubtotal)],
-    ['課税計 (10.0%)', fmt(taxableAmount)],
+    ['課税計', fmt(taxableAmount)],
     ['消費税', fmt(taxAmount)],
     ['(小計)', fmt(subTotal)],
   ]
@@ -225,16 +244,16 @@ function buildWorkbook(
   return wb
 }
 
-export async function exportInvoiceToExcel(invoice: Invoice): Promise<void> {
-  const wb = buildWorkbook('invoice', invoice)
+export async function exportInvoiceToExcel(invoice: Invoice, companyInfo?: CompanyInfo): Promise<void> {
+  const wb = buildWorkbook('invoice', invoice, companyInfo)
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const dateStr = invoice.issue_date.replace(/-/g, '')
   saveAs(blob, `御請求書_${invoice.customer_name}_${dateStr}.xlsx`)
 }
 
-export async function exportEstimateToExcel(estimate: Estimate): Promise<void> {
-  const wb = buildWorkbook('estimate', estimate)
+export async function exportEstimateToExcel(estimate: Estimate, companyInfo?: CompanyInfo): Promise<void> {
+  const wb = buildWorkbook('estimate', estimate, companyInfo)
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const dateStr = estimate.issue_date.replace(/-/g, '')

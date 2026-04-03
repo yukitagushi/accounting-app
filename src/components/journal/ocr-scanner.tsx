@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { Camera, Upload, RotateCcw, CheckCircle2, ChevronDown, ChevronUp, Loader2, FileImage, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { processReceiptImage, type OCRResult } from '@/lib/ocr-engine'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type OCRScannerProps = {
-  onCreateEntry: (entry: OCRResult['suggestedJournalEntry']) => void
+  onCreateEntry: (entry: OCRResult['suggestedJournalEntry'], data: OCRResult['data']) => void
   onEditEntry: (entry: OCRResult['suggestedJournalEntry'], data: OCRResult['data']) => void
 }
 
@@ -73,7 +74,7 @@ export function OCRScanner({ onCreateEntry, onEditEntry }: OCRScannerProps) {
   const processFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return
     if (file.size > 10 * 1024 * 1024) {
-      alert('ファイルサイズは10MB以下にしてください')
+      toast.error('ファイルサイズは10MB以下にしてください')
       return
     }
 
@@ -447,7 +448,7 @@ export function OCRScanner({ onCreateEntry, onEditEntry }: OCRScannerProps) {
           <Button
             type="button"
             className="w-full h-11 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200"
-            onClick={() => onCreateEntry(suggestedJournalEntry)}
+            onClick={() => onCreateEntry(suggestedJournalEntry, data)}
           >
             <CheckCircle2 className="size-4" />
             この内容で仕訳を作成

@@ -46,7 +46,7 @@ export default function AccountingPage() {
 
   const totalDebit = rows.reduce((s, r) => s + r.debit_balance, 0)
   const totalCredit = rows.reduce((s, r) => s + r.credit_balance, 0)
-  const isBalanced = totalDebit === totalCredit
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 1
 
   return (
     <div>

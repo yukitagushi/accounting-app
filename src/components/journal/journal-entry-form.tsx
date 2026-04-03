@@ -340,7 +340,7 @@ export function JournalEntryForm({
     )
   }
 
-  function validate(): string[] {
+  function validate(status: JournalEntry['status']): string[] {
     const errs: string[] = []
     if (!entryDate) errs.push('日付を入力してください')
     if (!description.trim()) errs.push('摘要を入力してください')
@@ -348,13 +348,15 @@ export function JournalEntryForm({
     if (lines.some((l) => !l.accountId)) errs.push('すべての行に勘定科目を設定してください')
     if (lines.some((l) => (l.debitAmount === '' || l.debitAmount === 0) && (l.creditAmount === '' || l.creditAmount === 0)))
       errs.push('各行に借方または貸方の金額を入力してください')
-    if (totalDebit !== totalCredit) errs.push('借方合計と貸方合計が一致していません')
-    if (totalDebit === 0) errs.push('金額を入力してください')
+    if (status !== 'draft') {
+      if (totalDebit !== totalCredit) errs.push('借方合計と貸方合計が一致していません')
+      if (totalDebit === 0) errs.push('金額を入力してください')
+    }
     return errs
   }
 
   async function handleSubmit(status: JournalEntry['status']) {
-    const errs = validate()
+    const errs = validate(status)
     if (errs.length) {
       setErrors(errs)
       return

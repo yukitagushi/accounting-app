@@ -70,9 +70,28 @@ export function EstimatePDF({
   const laborSubtotal = lines.reduce((sum, l) => sum + (l.labor_amount ?? 0), 0)
   const disc = estimate.discount ?? 0
   const rawSubtotal = partsSubtotal + laborSubtotal || estimate.subtotal
-  const taxableAmount = rawSubtotal - disc
-  const taxAmount = Math.floor(taxableAmount * 0.1)
-  const subTotal = taxableAmount + taxAmount
+  const discountedSubtotal = rawSubtotal - disc
+  const taxMode = estimate.tax_mode ?? 'exclusive'
+
+  // Calculate tax respecting per-line tax rates and tax mode
+  const taxAmount = (() => {
+    if (rawSubtotal === 0) return 0
+    const discountRatio = rawSubtotal > 0 ? discountedSubtotal / rawSubtotal : 1
+    if (taxMode === 'inclusive') {
+      return lines.reduce((sum, l) => {
+        const amount = l.quantity * l.unit_price
+        const discountedAmount = amount * discountRatio
+        return sum + Math.floor(discountedAmount * l.tax_rate / (1 + l.tax_rate))
+      }, 0)
+    }
+    return lines.reduce((sum, l) => {
+      const amount = l.quantity * l.unit_price
+      const discountedAmount = amount * discountRatio
+      return sum + Math.floor(discountedAmount * l.tax_rate)
+    }, 0)
+  })()
+
+  const subTotal = taxMode === 'inclusive' ? discountedSubtotal : discountedSubtotal + taxAmount
   const grandTotal = subTotal
 
   return (
@@ -167,8 +186,8 @@ export function EstimatePDF({
               <Text style={[s.totalsValue, { width: '30%' }]}>{fmt(laborSubtotal)}</Text>
             </View>
             <View style={s.totalsRow}>
-              <Text style={s.totalsLabel}>{'\u8ab2\u7a0e\u8a08 (10.0%)'}</Text>
-              <Text style={s.totalsValue}>{fmt(taxableAmount)}</Text>
+              <Text style={s.totalsLabel}>{'\u8ab2\u7a0e\u8a08'}</Text>
+              <Text style={s.totalsValue}>{fmt(discountedSubtotal)}</Text>
             </View>
             <View style={s.totalsRow}>
               <Text style={s.totalsLabel}>{'\u6d88\u8cbb\u7a0e'}</Text>

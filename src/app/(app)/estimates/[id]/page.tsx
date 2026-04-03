@@ -48,12 +48,14 @@ export default async function EstimateDetailPage({ params }: PageProps) {
                 編集
               </Button>
             </Link>
+            {(estimate.status === 'accepted' || estimate.status === 'sent') && (
             <Link href={`/invoices/new?from_estimate=${id}`}>
               <Button variant="outline" size="sm" className="gap-1.5">
                 <ArrowRightCircle className="w-3.5 h-3.5" />
                 請求書へ変換
               </Button>
             </Link>
+            )}
             <a
               href={`/api/pdf/estimate?id=${id}`}
               target="_blank"

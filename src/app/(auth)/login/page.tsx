@@ -31,7 +31,7 @@ export default function LoginPage() {
       (acc) => acc.email === email && acc.password === password
     )
 
-    if (isDemoAccount || (email && password)) {
+    if (isDemoAccount) {
       // Simulate login delay
       await new Promise((r) => setTimeout(r, 800))
       router.push('/dashboard')
@@ -169,7 +169,7 @@ export default function LoginPage() {
                   >
                     <div>
                       <div className="text-sm text-white font-medium">{acc.email}</div>
-                      <div className="text-xs text-blue-200/50">パスワード: {acc.password}</div>
+                      <div className="text-xs text-blue-200/50">パスワード: ••••••••</div>
                     </div>
                     <div className="text-right">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-400/20 text-indigo-200 border border-indigo-400/20">

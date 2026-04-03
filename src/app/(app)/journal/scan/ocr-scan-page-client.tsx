@@ -14,32 +14,36 @@ interface Props {
 export function OCRScanPageClient({ accounts }: Props) {
   const router = useRouter()
 
-  async function handleCreateEntry(entry: OCRResult['suggestedJournalEntry']) {
-    // Map OCR lines to JournalEntryLine, resolving account IDs from code
-    const lines: JournalEntryLine[] = entry.lines.map((line, i) => {
-      const account = accounts.find((a) => a.code === line.accountCode)
-      return {
-        id: `ocr-line-${i + 1}`,
-        journal_entry_id: '',
-        account_id: account?.id ?? '',
-        debit_amount: line.debitAmount,
-        credit_amount: line.creditAmount,
-        description: line.accountName,
-        line_order: i + 1,
-        account,
-      }
-    })
+  async function handleCreateEntry(entry: OCRResult['suggestedJournalEntry'], data: OCRResult['data']) {
+    try {
+      // Map OCR lines to JournalEntryLine, resolving account IDs from code
+      const lines: JournalEntryLine[] = entry.lines.map((line, i) => {
+        const account = accounts.find((a) => a.code === line.accountCode)
+        return {
+          id: `ocr-line-${i + 1}`,
+          journal_entry_id: '',
+          account_id: account?.id ?? '',
+          debit_amount: line.debitAmount,
+          credit_amount: line.creditAmount,
+          description: line.accountName,
+          line_order: i + 1,
+          account,
+        }
+      })
 
-    const created = await createJournalEntry({
-      entry_date: new Date().toISOString().slice(0, 10),
-      description: entry.description,
-      entry_type: entry.entryType,
-      status: 'draft',
-      lines,
-    })
+      const created = await createJournalEntry({
+        entry_date: data.date,
+        description: entry.description,
+        entry_type: entry.entryType,
+        status: 'draft',
+        lines,
+      })
 
-    toast.success('仕訳の下書きを作成しました')
-    router.push(`/journal/${created.id}`)
+      toast.success('仕訳の下書きを作成しました')
+      router.push(`/journal/${created.id}`)
+    } catch {
+      toast.error('仕訳の作成に失敗しました')
+    }
   }
 
   function handleEditEntry(

@@ -99,10 +99,25 @@ export function InvoicePreview({
   const rawSubtotal = partsSubtotal + laborSubtotal
   const subtotalBeforeDiscount = rawSubtotal || computedItems.reduce((sum, l) => sum + l.amount, 0)
 
-  const taxableAmount = subtotalBeforeDiscount - discount
-  const taxRate = 0.1
-  const taxAmount = Math.floor(taxableAmount * taxRate)
-  const subTotal = taxableAmount + taxAmount
+  const discountedSubtotal = subtotalBeforeDiscount - discount
+
+  // Calculate tax respecting per-line tax rates and tax mode
+  const taxAmount = (() => {
+    if (subtotalBeforeDiscount === 0) return 0
+    const discountRatio = subtotalBeforeDiscount > 0 ? discountedSubtotal / subtotalBeforeDiscount : 1
+    if (taxMode === 'inclusive') {
+      return computedItems.reduce((sum, l) => {
+        const discountedAmount = l.amount * discountRatio
+        return sum + Math.floor(discountedAmount * l.taxRate / (1 + l.taxRate))
+      }, 0)
+    }
+    return computedItems.reduce((sum, l) => {
+      const discountedAmount = l.amount * discountRatio
+      return sum + Math.floor(discountedAmount * l.taxRate)
+    }, 0)
+  })()
+
+  const subTotal = taxMode === 'inclusive' ? discountedSubtotal : discountedSubtotal + taxAmount
   const grandTotal = subTotal
 
   // Cell style helpers
@@ -300,8 +315,8 @@ export function InvoicePreview({
                   <td style={{ border: cellBorder, padding: cellPad, textAlign: 'right' }}>{fmt(laborSubtotal)}</td>
                 </tr>
                 <tr>
-                  <td style={{ border: cellBorder, backgroundColor: headerBg, padding: cellPad, fontWeight: 700, textAlign: 'center' }}>{'課税計 (10.0%)'}</td>
-                  <td style={{ border: cellBorder, padding: cellPad, textAlign: 'right' }} colSpan={2}>{fmt(taxableAmount)}</td>
+                  <td style={{ border: cellBorder, backgroundColor: headerBg, padding: cellPad, fontWeight: 700, textAlign: 'center' }}>{'課税計'}</td>
+                  <td style={{ border: cellBorder, padding: cellPad, textAlign: 'right' }} colSpan={2}>{fmt(discountedSubtotal)}</td>
                 </tr>
                 <tr>
                   <td style={{ border: cellBorder, backgroundColor: headerBg, padding: cellPad, fontWeight: 700, textAlign: 'center' }}>{'消費税'}</td>

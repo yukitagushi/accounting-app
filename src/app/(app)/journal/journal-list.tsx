@@ -30,8 +30,8 @@ interface JournalListProps {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+  const [y, m, d] = dateStr.split('-')
+  return `${y}/${String(Number(m)).padStart(2, '0')}/${String(Number(d)).padStart(2, '0')}`
 }
 
 function formatAmount(n: number): string {
@@ -344,7 +344,7 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
         </p>
         <CSVExportDialog
           title="仕訳帳"
-          data={initialEntries}
+          data={sorted}
           dateField="entry_date"
           onExport={(filteredData, startDate, endDate) =>
             exportJournalEntries(filteredData, accounts, startDate, endDate)

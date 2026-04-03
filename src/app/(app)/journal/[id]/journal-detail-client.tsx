@@ -28,8 +28,8 @@ import { JOURNAL_ENTRY_TYPES } from '@/lib/constants'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+  const [y, m, d] = dateStr.split('-')
+  return `${y}年${Number(m)}月${Number(d)}日`
 }
 
 function formatDateTime(isoStr: string): string {
@@ -166,6 +166,8 @@ export function JournalDetailClient({ entry: initialEntry, accounts }: Props) {
       if (updated) {
         setEntry(updated)
         toast.success('仕訳を無効にしました')
+      } else {
+        toast.error('更新に失敗しました')
       }
     } finally {
       setIsBusy(false)
@@ -174,31 +176,37 @@ export function JournalDetailClient({ entry: initialEntry, accounts }: Props) {
   }
 
   async function handleUpdate(data: JournalEntryFormData) {
-    const newLines: JournalEntryLine[] = data.lines
-      .filter((l: FormLine) => l.accountId)
-      .map((l: FormLine, i: number) => ({
-        id: `${entry.id}-l${i + 1}`,
-        journal_entry_id: entry.id,
-        account_id: l.accountId!,
-        debit_amount: typeof l.debitAmount === 'number' ? l.debitAmount : 0,
-        credit_amount: typeof l.creditAmount === 'number' ? l.creditAmount : 0,
-        description: l.memo,
-        line_order: i + 1,
-        account: accounts.find((a) => a.id === l.accountId),
-      }))
+    try {
+      const newLines: JournalEntryLine[] = data.lines
+        .filter((l: FormLine) => l.accountId)
+        .map((l: FormLine, i: number) => ({
+          id: `${entry.id}-l${i + 1}`,
+          journal_entry_id: entry.id,
+          account_id: l.accountId!,
+          debit_amount: typeof l.debitAmount === 'number' ? l.debitAmount : 0,
+          credit_amount: typeof l.creditAmount === 'number' ? l.creditAmount : 0,
+          description: l.memo,
+          line_order: i + 1,
+          account: accounts.find((a) => a.id === l.accountId),
+        }))
 
-    const updated = await updateJournalEntry(entry.id, {
-      entry_date: data.entry_date,
-      description: data.description,
-      entry_type: data.entry_type,
-      status: data.status,
-      lines: newLines,
-    })
+      const updated = await updateJournalEntry(entry.id, {
+        entry_date: data.entry_date,
+        description: data.description,
+        entry_type: data.entry_type,
+        status: data.status,
+        lines: newLines,
+      })
 
-    if (updated) {
-      setEntry(updated)
-      setEditing(false)
-      toast.success(data.status === 'posted' ? '仕訳を承認しました' : '下書きとして保存しました')
+      if (updated) {
+        setEntry(updated)
+        setEditing(false)
+        toast.success(data.status === 'posted' ? '仕訳を承認しました' : '下書きとして保存しました')
+      } else {
+        toast.error('更新に失敗しました')
+      }
+    } catch {
+      toast.error('更新に失敗しました')
     }
   }
 
@@ -382,6 +390,8 @@ export function JournalDetailClient({ entry: initialEntry, accounts }: Props) {
                 if (updated) {
                   setEntry(updated)
                   toast.success('仕訳を承認しました')
+                } else {
+                  toast.error('更新に失敗しました')
                 }
               } finally {
                 setIsBusy(false)

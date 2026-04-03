@@ -21,11 +21,11 @@ export const useTaxModeStore = create<TaxModeStore>()(
       calculateTax: (amount: number) => {
         const { taxMode, taxRate } = get()
         if (taxMode === 'inclusive') {
-          const subtotal = Math.round(amount / (1 + taxRate))
-          const tax = amount - subtotal
+          const tax = Math.floor(amount * taxRate / (1 + taxRate))
+          const subtotal = amount - tax
           return { subtotal, tax, total: amount }
         }
-        const tax = Math.round(amount * taxRate)
+        const tax = Math.floor(amount * taxRate)
         return { subtotal: amount, tax, total: amount + tax }
       },
     }),

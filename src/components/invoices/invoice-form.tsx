@@ -238,9 +238,27 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
   const subtotal = lineItems.reduce((sum, l) => sum + l.amount, 0)
   const partsSubtotal = lineItems.reduce((sum, l) => sum + (l.parts_amount || 0), 0)
   const laborSubtotal = lineItems.reduce((sum, l) => sum + (l.labor_amount || 0), 0)
-  const taxableAmount = subtotal - discount
-  const taxAmount = Math.floor(taxableAmount * 0.1)
-  const total = taxableAmount + taxAmount
+  const discountedSubtotal = subtotal - discount
+
+  // Calculate tax respecting per-line tax rates and tax mode
+  const taxAmount = (() => {
+    if (subtotal === 0) return 0
+    const discountRatio = subtotal > 0 ? discountedSubtotal / subtotal : 1
+    if (taxMode === 'inclusive') {
+      // Tax-inclusive: tax is already included in amounts
+      return lineItems.reduce((sum, l) => {
+        const discountedAmount = l.amount * discountRatio
+        return sum + Math.floor(discountedAmount * l.tax_rate / (1 + l.tax_rate))
+      }, 0)
+    }
+    // Tax-exclusive: tax is added on top
+    return lineItems.reduce((sum, l) => {
+      const discountedAmount = l.amount * discountRatio
+      return sum + Math.floor(discountedAmount * l.tax_rate)
+    }, 0)
+  })()
+
+  const total = taxMode === 'inclusive' ? discountedSubtotal : discountedSubtotal + taxAmount
 
   const previewLineItems = useMemo(
     () =>
@@ -265,6 +283,10 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
   async function handleSave(status: 'draft' | 'sent') {
     if (!customerName.trim()) {
       toast.error('顧客名を入力してください')
+      return
+    }
+    if (discount > subtotal) {
+      toast.error('値引き額が小計を超えています')
       return
     }
     setSaving(true)
@@ -307,7 +329,8 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
       }
 
       if (mode === 'edit' && initialData) {
-        await updateInvoice(initialData.id, payload)
+        const preserveStatus = initialData.status === 'paid' || initialData.status === 'void'
+        await updateInvoice(initialData.id, { ...payload, status: preserveStatus ? initialData.status : status })
         toast.success('請求書を更新しました')
         router.push(`/invoices/${initialData.id}`)
       } else {
@@ -568,8 +591,8 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
             </div>
           </div>
           <div className="flex items-center gap-6">
-            <span className="text-gray-600">課税計 (10%)</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(taxableAmount)}</span>
+            <span className="text-gray-600">課税計</span>
+            <span className="tabular-nums w-36 text-right">{formatCurrency(discountedSubtotal)}</span>
           </div>
           <div className="flex items-center gap-6">
             <span className="text-gray-600">消費税</span>

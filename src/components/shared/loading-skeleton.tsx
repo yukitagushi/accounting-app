@@ -76,7 +76,7 @@ export function FormSkeleton({ fields = 4 }: { fields?: number }) {
 // Stats cards skeleton
 export function StatsCardsSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className={cn('grid gap-4', `grid-cols-${Math.min(count, 4)}`)}>
+    <div className={cn('grid gap-4', { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' }[Math.min(count, 4)] ?? 'grid-cols-4')}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="rounded-xl border border-gray-100 bg-white p-5">
           <div className="flex items-center justify-between mb-3">
