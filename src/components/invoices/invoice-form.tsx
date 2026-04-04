@@ -339,12 +339,11 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
         const preserveStatus = initialData.status === 'paid' || initialData.status === 'void'
         await updateInvoice(initialData.id, { ...payload, status: preserveStatus ? initialData.status : status })
         toast.success('請求書を更新しました')
-        router.push(`/invoices/${initialData.id}`)
       } else {
-        const created = await createInvoice(payload)
+        await createInvoice(payload)
         toast.success('請求書を作成しました')
-        router.push(`/invoices/${created.id}`)
       }
+      router.push('/invoices')
     } catch {
       toast.error('保存に失敗しました')
     } finally {
@@ -690,7 +689,7 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
               a.click()
               URL.revokeObjectURL(url)
               toast.success('保存してPDFをダウンロードしました')
-              if (savedId && savedId !== initialData?.id) router.push(`/invoices/${savedId}`)
+              router.push('/invoices')
             } catch {
               toast.error('保存またはPDF生成に失敗しました')
             } finally {

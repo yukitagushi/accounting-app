@@ -1,22 +1,36 @@
-import { notFound } from 'next/navigation'
+'use client'
+
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/page-header'
 import { EstimateForm } from '@/components/estimates/estimate-form'
 import { Button } from '@/components/ui/button'
 import { getEstimate } from '@/lib/mock-data'
 import { ChevronLeft } from 'lucide-react'
+import type { Estimate } from '@/lib/types'
 
-interface PageProps {
-  params: Promise<{ id: string }>
-}
+export default function EstimateEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const [id, setId] = useState('')
+  const [estimate, setEstimate] = useState<Estimate | null>(null)
+  const [loading, setLoading] = useState(true)
 
-export default async function EstimateEditPage({ params }: PageProps) {
-  const { id } = await params
-  const estimate = await getEstimate(id)
+  useEffect(() => {
+    params.then(({ id }) => {
+      setId(id)
+      getEstimate(id).then((est) => {
+        setEstimate(est)
+        setLoading(false)
+      })
+    })
+  }, [params])
 
-  if (!estimate) {
-    notFound()
-  }
+  if (loading) return <div className="py-20 text-center text-gray-400">読み込み中...</div>
+  if (!estimate) return (
+    <div className="py-20 text-center">
+      <p className="text-gray-500 mb-4">見積書が見つかりません</p>
+      <Link href="/estimates"><Button variant="outline">見積書一覧へ戻る</Button></Link>
+    </div>
+  )
 
   return (
     <div>
@@ -28,12 +42,7 @@ export default async function EstimateEditPage({ params }: PageProps) {
           </Button>
         </Link>
       </div>
-
-      <PageHeader
-        title={`見積書 編集 - ${estimate.estimate_number}`}
-        description={estimate.customer_name}
-      />
-
+      <PageHeader title={`見積書 編集 - ${estimate.estimate_number}`} description={estimate.customer_name} />
       <EstimateForm initialData={estimate} mode="edit" />
     </div>
   )

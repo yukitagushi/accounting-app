@@ -255,14 +255,11 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       if (mode === 'edit' && initialData) {
         await updateEstimate(initialData.id, payload)
         toast.success('見積書を更新しました')
-        router.push(`/estimates/${initialData.id}`)
-        return
       } else {
-        const created = await createEstimate(payload)
+        await createEstimate(payload)
         toast.success('見積書を作成しました')
-        router.push(`/estimates/${created.id}`)
-        return
       }
+      router.push('/estimates')
     } catch {
       toast.error('保存に失敗しました')
     } finally {
@@ -647,7 +644,7 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
               a.click()
               URL.revokeObjectURL(url)
               toast.success('保存してPDFをダウンロードしました')
-              if (savedId && savedId !== initialData?.id) router.push(`/estimates/${savedId}`)
+              router.push('/estimates')
             } catch {
               toast.error('保存またはPDF生成に失敗しました')
             } finally {
