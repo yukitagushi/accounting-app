@@ -242,10 +242,11 @@ async function ocrVehicleInspection(file: File): Promise<{
         if (data.vehicle_inspection_date) {
           result.vehicle_inspection_date = japaneseToISODate(data.vehicle_inspection_date) || data.vehicle_inspection_date
         }
-        return result
+        // Vision APIで1つでも取得できた場合は結果を返す（取れなければConvertAPIにフォールバック）
+        if (Object.keys(result).length > 0) return result
       }
     }
-    // Vision APIが失敗した場合はConvertAPIにフォールバック（エラーは無視）
+    // Vision APIが失敗またはデータなしの場合はConvertAPIにフォールバック
   }
 
   // ConvertAPI OCR + 正規表現にフォールバック（圧縮して送信）
@@ -373,6 +374,10 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
     setOcrLoading(true)
     try {
       const extracted = await ocrVehicleInspection(file)
+      const hasData = Object.values(extracted).some((v) => v)
+      if (!hasData) {
+        throw new Error('データを読み取れませんでした。画像を確認して再度お試しください。')
+      }
       setForm((prev) => ({
         ...prev,
         vehicle_model: extracted.vehicle_model ?? prev.vehicle_model,
