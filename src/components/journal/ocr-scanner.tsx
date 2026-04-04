@@ -85,9 +85,15 @@ export function OCRScanner({ onCreateEntry, onEditEntry }: OCRScannerProps) {
 
     try {
       const ocrResult = await processReceiptImage(file, (p) => setProgress(p))
+      if (!ocrResult.success) {
+        toast.error('レシートの読み取りに失敗しました。画像を確認してください。')
+        setState('error')
+        return
+      }
       setResult(ocrResult)
       setState('done')
-    } catch {
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'OCR処理に失敗しました')
       setState('error')
     }
   }, [])

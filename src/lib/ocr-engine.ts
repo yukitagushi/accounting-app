@@ -1,5 +1,4 @@
-// OCR Engine - Client-side receipt scanning simulation
-// This module simulates OCR processing with realistic templates for Japanese receipts
+// OCR Engine - Real receipt scanning via ConvertAPI + text parsing
 
 export type OCRResult = {
   success: boolean
@@ -27,265 +26,329 @@ export type OCRResult = {
   }
 }
 
-type ReceiptTemplate = {
-  vendor: string
+// ── Text parsing helpers ─────��───────────────────────────────────────────────
+
+function extractDate(text: string): string {
+  // Try various Japanese date formats
+  // 2024年3月15日, 2024/03/15, 2024-03-15, R6.3.15, 令和6年3月15日
+  const patterns = [
+    /(\d{4})\s*[年\/\-\.]\s*(\d{1,2})\s*[月\/\-\.]\s*(\d{1,2})\s*日?/,
+    /令和\s*(\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/,
+    /R\s*(\d{1,2})\s*[\.\/]\s*(\d{1,2})\s*[\.\/]\s*(\d{1,2})/,
+  ]
+
+  for (const pat of patterns) {
+    const m = text.match(pat)
+    if (m) {
+      if (pat.source.includes('令和') || pat.source.startsWith('R')) {
+        const year = 2018 + parseInt(m[1])
+        return `${year}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+      }
+      return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+    }
+  }
+  return new Date().toISOString().slice(0, 10)
+}
+
+function extractAmounts(text: string): { total: number; tax: number; subtotal: number } {
+  const lines = text.split('\n')
+  let total = 0
+  let tax = 0
+  let subtotal = 0
+
+  for (const line of lines) {
+    const cleaned = line.replace(/\s+/g, '').replace(/,/g, '')
+
+    // Total patterns: 合計, 総合計, お会計, ご請求額, Total
+    if (/(?:総合計|お会計|ご請求|合計金額|お支払|税込合計|請求額)/.test(cleaned)) {
+      const m = cleaned.match(/[¥￥]?\s*(\d+)/)
+      if (m) total = parseInt(m[1])
+    } else if (/合計/.test(cleaned) && !/小計/.test(cleaned) && !/税/.test(cleaned)) {
+      const m = cleaned.match(/[¥￥]?\s*(\d+)/)
+      if (m) {
+        const val = parseInt(m[1])
+        if (val > total) total = val
+      }
+    }
+
+    // Tax patterns: 消費税, 税額, 内税, 外税
+    if (/(?:消費税|税額|内税|外税|税\s*\()/.test(cleaned)) {
+      const m = cleaned.match(/[¥���]?\s*(\d+)/)
+      if (m) tax = parseInt(m[1])
+    }
+
+    // Subtotal patterns: 小計, 税抜
+    if (/(?:小計|税抜|税別)/.test(cleaned)) {
+      const m = cleaned.match(/[¥￥]?\s*(\d+)/)
+      if (m) subtotal = parseInt(m[1])
+    }
+  }
+
+  // Fallback: if we only found total, estimate tax
+  if (total > 0 && tax === 0 && subtotal === 0) {
+    tax = Math.floor(total * 10 / 110) // assume 10% inclusive
+    subtotal = total - tax
+  }
+  if (total === 0 && subtotal > 0) {
+    if (tax === 0) tax = Math.floor(subtotal * 0.1)
+    total = subtotal + tax
+  }
+  if (subtotal === 0 && total > 0 && tax > 0) {
+    subtotal = total - tax
+  }
+
+  // Last resort: find the largest number in the text
+  if (total === 0) {
+    const allNums = text.match(/[¥￥]\s*[\d,]+/g)
+    if (allNums) {
+      const nums = allNums.map((n) => parseInt(n.replace(/[¥￥,\s]/g, ''))).filter((n) => n > 0)
+      if (nums.length > 0) {
+        total = Math.max(...nums)
+        tax = Math.floor(total * 10 / 110)
+        subtotal = total - tax
+      }
+    }
+  }
+
+  return { total, tax, subtotal }
+}
+
+function extractVendor(text: string): string {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+
+  // Usually the vendor name is in the first few lines
+  for (const line of lines.slice(0, 5)) {
+    const cleaned = line.replace(/[━─═＝\-=*#]+/g, '').trim()
+    if (!cleaned) continue
+    // Skip lines that are just numbers, dates, or common receipt headers
+    if (/^[\d\s\-\/\.]+$/.test(cleaned)) continue
+    if (/^(レシート|領収書|領収証|納品書|請求書|TEL|tel|FAX|fax|\d{2,4}[\/\-])/.test(cleaned)) continue
+    if (cleaned.length >= 2 && cleaned.length <= 30) {
+      return cleaned
+    }
+  }
+  return '不明な店���'
+}
+
+function extractItems(text: string): Array<{ description: string; amount: number }> {
+  const items: Array<{ description: string; amount: number }> = []
+  const lines = text.split('\n')
+
+  for (const line of lines) {
+    const cleaned = line.trim()
+    if (!cleaned) continue
+
+    // Match lines with description and amount: "商品名 ¥1,234" or "商品名 1,234円" or "商品名  1234"
+    const m = cleaned.match(/^(.+?)\s+[¥￥]?\s*([\d,]+)\s*円?\s*$/)
+    if (m) {
+      const desc = m[1].trim()
+      const amount = parseInt(m[2].replace(/,/g, ''))
+
+      // Skip totals, tax lines, etc.
+      if (/(?:合計|小計|消費税|税額|お釣り|お預かり|値引|割引|ポイント)/.test(desc)) continue
+      if (desc.length < 1 || amount <= 0) continue
+
+      items.push({ description: desc, amount })
+    }
+  }
+  return items
+}
+
+function detectPaymentMethod(text: string): 'cash' | 'credit_card' | 'bank_transfer' {
+  const lower = text.toLowerCase()
+  if (/(?:クレジット|credit|visa|master|jcb|amex|カード払|ｸﾚｼﾞｯﾄ)/.test(lower)) return 'credit_card'
+  if (/(?:振込|振替|口座|bank)/.test(lower)) return 'bank_transfer'
+  return 'cash'
+}
+
+// ── Category & account mapping ─────���─────────────────────────────────────────
+
+type CategoryMapping = {
   category: string
   accountCode: string
   accountName: string
   creditCode: string
   creditName: string
-  items: Array<{ description: string; baseAmount: number }>
-  paymentMethod: 'cash' | 'credit_card' | 'bank_transfer'
+  keywords: string[]
 }
 
-const RECEIPT_TEMPLATES: ReceiptTemplate[] = [
+const CATEGORY_MAPPINGS: CategoryMapping[] = [
   {
-    vendor: 'エネオス 渋谷SS',
-    category: '車両費',
-    accountCode: '7000',
-    accountName: '雑費',
-    creditCode: '1000',
-    creditName: '現金',
-    items: [
-      { description: 'レギュラーガソリン 45L', baseAmount: 7920 },
-      { description: '洗車サービス', baseAmount: 550 },
-    ],
-    paymentMethod: 'cash',
+    category: '燃料費', accountCode: '6500', accountName: '消耗品費',
+    creditCode: '1000', creditName: '現金',
+    keywords: ['ガソリン', 'ガソリンスタンド', '給油', '軽油', 'エネオス', 'ENEOS', 'シェル', 'コスモ', 'SS', '燃料'],
   },
   {
-    vendor: 'オートバックス 東京本店',
-    category: '消耗品費',
-    accountCode: '6500',
-    accountName: '消耗品費',
-    creditCode: '1000',
-    creditName: '現金',
-    items: [
-      { description: 'エンジンオイル 4L', baseAmount: 3800 },
-      { description: 'オイルフィルター', baseAmount: 1200 },
-      { description: 'ワイパーブレード', baseAmount: 1800 },
-    ],
-    paymentMethod: 'cash',
+    category: '部品仕入', accountCode: '5100', accountName: '部品仕入',
+    creditCode: '2000', creditName: '買���金',
+    keywords: ['部品', 'パーツ', 'ブレーキ', 'オイル', 'フィルター', 'プラグ', 'タイヤ', 'バッテリー', 'オートバックス', 'イエローハット'],
   },
   {
-    vendor: '東京電力エナジーパートナー',
-    category: '水道光熱費',
-    accountCode: '6300',
-    accountName: '水道光熱費',
-    creditCode: '2100',
-    creditName: '未払金',
-    items: [
-      { description: '電気料金（3月分）', baseAmount: 28500 },
-      { description: '再エネ賦課金', baseAmount: 1500 },
-    ],
-    paymentMethod: 'bank_transfer',
+    category: '水道光熱費', accountCode: '6300', accountName: '水道光熱費',
+    creditCode: '2100', creditName: '未払金',
+    keywords: ['電気', '電力', 'ガス', '水道', '光熱', '東京電力', '東北電力', '東京ガス'],
   },
   {
-    vendor: '東京ガス株式会社',
-    category: '水道光熱費',
-    accountCode: '6300',
-    accountName: '水道光熱費',
-    creditCode: '2100',
-    creditName: '未払金',
-    items: [
-      { description: 'ガス料金（3月分）', baseAmount: 12800 },
-    ],
-    paymentMethod: 'bank_transfer',
+    category: '通信費', accountCode: '6400', accountName: '通信費',
+    creditCode: '2100', creditName: '未払金',
+    keywords: ['電話', '通信', 'ドコモ', 'ソフトバンク', 'au', 'KDDI', 'NTT', 'インターネット', 'Wi-Fi'],
   },
   {
-    vendor: 'コーナン 新宿店',
-    category: '消耗品費',
-    accountCode: '6500',
-    accountName: '消耗品費',
-    creditCode: '1000',
-    creditName: '現金',
-    items: [
-      { description: '清掃用品セット', baseAmount: 1980 },
-      { description: 'ゴミ袋 45L×20枚', baseAmount: 680 },
-      { description: '洗剤（業務用）', baseAmount: 1280 },
-    ],
-    paymentMethod: 'cash',
+    category: '消耗品費', accountCode: '6500', accountName: '消耗品費',
+    creditCode: '1000', creditName: '���金',
+    keywords: ['文具', '事務用品', 'コピー', 'プリンター', 'トナー', 'Amazon', '消耗品', '清掃', '洗剤'],
   },
   {
-    vendor: 'ヤマト運輸株式会社',
-    category: '荷造運賃',
-    accountCode: '7000',
-    accountName: '雑費',
-    creditCode: '1000',
-    creditName: '現金',
-    items: [
-      { description: '宅急便 60サイズ×3個', baseAmount: 1650 },
-      { description: '着払い手数料', baseAmount: 0 },
-    ],
-    paymentMethod: 'cash',
+    category: '会議費', accountCode: '7000', accountName: '雑費',
+    creditCode: '1000', creditName: '現金',
+    keywords: ['飲食', 'レストラン', '居酒屋', 'カフェ', '喫茶', '弁当', '会議', '打ち合わせ', '接待'],
   },
   {
-    vendor: '居酒屋 和らく',
-    category: '会議費',
-    accountCode: '7000',
-    accountName: '雑費',
-    creditCode: '1000',
-    creditName: '現金',
-    items: [
-      { description: 'お通し×4名', baseAmount: 1600 },
-      { description: '飲み放題コース×4名', baseAmount: 10800 },
-      { description: '追加注文', baseAmount: 3200 },
-    ],
-    paymentMethod: 'cash',
+    category: '荷造運賃', accountCode: '7000', accountName: '雑費',
+    creditCode: '1000', creditName: '現金',
+    keywords: ['宅急便', '宅配', '運送', '配送', 'ヤマト', '佐川', 'ゆうパック', '郵便'],
   },
   {
-    vendor: 'Amazon Business',
-    category: '事務用品費',
-    accountCode: '6500',
-    accountName: '消耗品費',
-    creditCode: '2100',
-    creditName: '未払金',
-    items: [
-      { description: 'コピー用紙 A4 500枚×5冊', baseAmount: 2980 },
-      { description: 'ボールペン 10本入り', baseAmount: 880 },
-      { description: 'クリアファイル 30枚', baseAmount: 650 },
-    ],
-    paymentMethod: 'credit_card',
+    category: '地代家賃', accountCode: '6200', accountName: '地代家賃',
+    creditCode: '1010', creditName: '普通預金',
+    keywords: ['家賃', '賃料', '駐車場', '倉庫'],
   },
   {
-    vendor: '株式会社NTTドコモ',
-    category: '通信費',
-    accountCode: '6400',
-    accountName: '通信費',
-    creditCode: '2100',
-    creditName: '未払金',
-    items: [
-      { description: '法人向け携帯料金（3回線）', baseAmount: 18000 },
-      { description: 'データプラン追加', baseAmount: 1100 },
-    ],
-    paymentMethod: 'bank_transfer',
-  },
-  {
-    vendor: '部品商事 有限会社',
-    category: '部品仕入',
-    accountCode: '5100',
-    accountName: '部品仕入',
-    creditCode: '2000',
-    creditName: '買掛金',
-    items: [
-      { description: 'ブレーキパッド（前輪用）', baseAmount: 8500 },
-      { description: 'エアフィルター', baseAmount: 2800 },
-      { description: 'スパークプラグ×4', baseAmount: 3600 },
-    ],
-    paymentMethod: 'bank_transfer',
+    category: '保険料', accountCode: '6700', accountName: '保険料',
+    creditCode: '1010', creditName: '普通預金',
+    keywords: ['保険', '自賠責', '任意保険', '損害保険'],
   },
 ]
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+function categorize(text: string, vendor: string): CategoryMapping {
+  const searchText = (text + ' ' + vendor).toLowerCase()
+
+  for (const mapping of CATEGORY_MAPPINGS) {
+    for (const kw of mapping.keywords) {
+      if (searchText.includes(kw.toLowerCase())) {
+        return mapping
+      }
+    }
+  }
+
+  // Default: 消耗品費
+  return {
+    category: 'その他',
+    accountCode: '7000',
+    accountName: '雑費',
+    creditCode: '1000',
+    creditName: '現金',
+    keywords: [],
+  }
 }
 
-function getRandomVariation(base: number, variationPct = 0.3): number {
-  const factor = 1 + (Math.random() - 0.5) * 2 * variationPct
-  return Math.round(base * factor)
-}
-
-function getRecentDate(): string {
-  const now = new Date()
-  const daysBack = Math.floor(Math.random() * 30)
-  now.setDate(now.getDate() - daysBack)
-  return now.toISOString().slice(0, 10)
-}
-
-function buildRawText(template: ReceiptTemplate, date: string, subtotal: number, tax: number, total: number): string {
-  const lines: string[] = [
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `　　　　${template.vendor}`,
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `日付：${date}`,
-    '',
-    '【ご購入明細】',
-    ...template.items.map((item) => `${item.description}`),
-    '',
-    '─────────────────────────',
-    `小計　　　　¥${subtotal.toLocaleString('ja-JP')}`,
-    `消費税（10%）　¥${tax.toLocaleString('ja-JP')}`,
-    `合計　　　　¥${total.toLocaleString('ja-JP')}`,
-    '─────────────────────────',
-    `お支払い：${
-      template.paymentMethod === 'cash'
-        ? '現金'
-        : template.paymentMethod === 'credit_card'
-        ? 'クレジットカード'
-        : '銀行振込'
-    }`,
-    '',
-    'ありがとうございました',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-  ]
-  return lines.join('\n')
-}
+// ── Main OCR function ────────────────────────────────────��───────────────────
 
 export async function processReceiptImage(
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<OCRResult> {
-  // Simulate OCR processing with realistic delays
-  const steps = [10, 25, 45, 65, 80, 92, 100]
-  for (const step of steps) {
-    await new Promise<void>((resolve) => setTimeout(resolve, 280 + Math.random() * 220))
-    onProgress?.(step)
+  onProgress?.(10)
+
+  // Upload to our API route for OCR processing
+  const formData = new FormData()
+  formData.append('file', file)
+
+  onProgress?.(25)
+
+  const res = await fetch('/api/ocr', {
+    method: 'POST',
+    body: formData,
+  })
+
+  onProgress?.(60)
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(err.error || 'OCR processing failed')
   }
 
-  const template = pickRandom(RECEIPT_TEMPLATES)
-  const date = getRecentDate()
+  const { text: rawText } = await res.json()
 
-  // Calculate amounts with random variation
-  const items = template.items.map((item) => ({
-    description: item.description,
-    amount: item.baseAmount > 0 ? getRandomVariation(item.baseAmount) : 0,
-  }))
+  onProgress?.(75)
 
-  const subtotal = items.reduce((sum, item) => sum + item.amount, 0)
-  const tax = Math.round(subtotal * 0.1)
-  const total = subtotal + tax
-  const confidence = 88 + Math.floor(Math.random() * 11) // 88-98
+  // Parse the OCR text
+  const vendor = extractVendor(rawText)
+  const date = extractDate(rawText)
+  const { total, tax, subtotal } = extractAmounts(rawText)
+  const items = extractItems(rawText)
+  const paymentMethod = detectPaymentMethod(rawText)
+  const mapping = categorize(rawText, vendor)
 
-  const rawText = buildRawText(template, date, subtotal, tax, total)
+  onProgress?.(90)
 
-  const description = `${template.vendor} ${template.category}`
+  // Adjust credit account based on payment method
+  let creditCode = mapping.creditCode
+  let creditName = mapping.creditName
+  if (paymentMethod === 'credit_card') {
+    creditCode = '2100'
+    creditName = '未払金'
+  } else if (paymentMethod === 'bank_transfer') {
+    creditCode = '1010'
+    creditName = '普通預金'
+  }
+
+  // Build suggested journal entry
+  const description = `${vendor} ${mapping.category}`
+  const journalLines = [
+    {
+      accountName: mapping.accountName,
+      accountCode: mapping.accountCode,
+      debitAmount: subtotal,
+      creditAmount: 0,
+    },
+  ]
+
+  if (tax > 0) {
+    journalLines.push({
+      accountName: '仮払消費税',
+      accountCode: '1300',
+      debitAmount: tax,
+      creditAmount: 0,
+    })
+  }
+
+  journalLines.push({
+    accountName: creditName,
+    accountCode: creditCode,
+    debitAmount: 0,
+    creditAmount: total,
+  })
+
+  // Estimate confidence based on how much data we could extract
+  let confidence = 50
+  if (vendor !== '不明な店舗') confidence += 15
+  if (total > 0) confidence += 15
+  if (tax > 0) confidence += 5
+  if (items.length > 0) confidence += 10
+  if (date !== new Date().toISOString().slice(0, 10)) confidence += 5
+  confidence = Math.min(confidence, 98)
+
+  onProgress?.(100)
 
   return {
-    success: true,
+    success: total > 0,
     confidence,
     data: {
-      vendor: template.vendor,
+      vendor,
       date,
       total,
       tax,
       subtotal,
-      items,
-      paymentMethod: template.paymentMethod,
-      category: template.category,
+      items: items.length > 0 ? items : [{ description: mapping.category, amount: subtotal }],
+      paymentMethod,
+      category: mapping.category,
     },
     rawText,
     suggestedJournalEntry: {
       description,
       entryType: 'normal',
-      lines: [
-        {
-          accountName: template.accountName,
-          accountCode: template.accountCode,
-          debitAmount: subtotal,
-          creditAmount: 0,
-        },
-        {
-          accountName: '仮払消費税',
-          accountCode: '1300',
-          debitAmount: tax,
-          creditAmount: 0,
-        },
-        {
-          accountName: template.creditName,
-          accountCode: template.creditCode,
-          debitAmount: 0,
-          creditAmount: total,
-        },
-      ],
+      lines: journalLines,
     },
   }
 }
