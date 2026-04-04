@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "src/app/api/ocr/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/ocr-vision/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

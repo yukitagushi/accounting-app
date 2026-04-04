@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// Vercel Pro: 60s, Hobby: 10s（タイムアウト対策）
+export const maxDuration = 60
+
 // File size limit: 10MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 // Allowed image types
@@ -38,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Determine source format from file type
     const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    console.log(`[ocr] file: ${file.name}, size: ${(file.size / 1024).toFixed(1)}KB, type: ${file.type}, ext: ${ext}`)
 
     // Convert image to JPG first if not already JPG, then OCR
     const arrayBuffer = await file.arrayBuffer()

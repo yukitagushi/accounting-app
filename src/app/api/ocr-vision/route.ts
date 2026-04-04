@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// Vercel Pro: 60s, Hobby: 10s（タイムアウト対策）
+export const maxDuration = 60
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 // OpenAI Vision API supports JPEG, PNG, WebP, GIF only — NOT HEIC/HEIF
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
     const mimeType = file.type
+    console.log(`[ocr-vision] file: ${file.name}, size: ${(file.size / 1024).toFixed(1)}KB, type: ${mimeType}, base64: ${(base64.length / 1024).toFixed(1)}KB`)
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -67,7 +71,7 @@ JSONのみ返してください。説明文は不要です。`,
                 type: 'image_url',
                 image_url: {
                   url: `data:${mimeType};base64,${base64}`,
-                  detail: 'high',
+                  detail: 'auto',
                 },
               },
             ],
