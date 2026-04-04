@@ -135,6 +135,36 @@ function generateCSV(customers: Customer[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// 日付変換ヘルパー: 和暦・西暦文字列を YYYY-MM-DD に変換
+// ---------------------------------------------------------------------------
+
+function japaneseToISODate(str: string): string {
+  if (!str) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+  const reiwa = str.match(/令和\s*(\d+)年\s*(\d+)月(?:\s*(\d+)日)?/)
+  if (reiwa) {
+    const y = 2018 + parseInt(reiwa[1])
+    const m = parseInt(reiwa[2]).toString().padStart(2, '0')
+    const d = (reiwa[3] ? parseInt(reiwa[3]) : 1).toString().padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  const heisei = str.match(/平成\s*(\d+)年\s*(\d+)月(?:\s*(\d+)日)?/)
+  if (heisei) {
+    const y = 1988 + parseInt(heisei[1])
+    const m = parseInt(heisei[2]).toString().padStart(2, '0')
+    const d = (heisei[3] ? parseInt(heisei[3]) : 1).toString().padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  const western = str.match(/(\d{4})年\s*(\d+)月(?:\s*(\d+)日)?/)
+  if (western) {
+    const m = parseInt(western[2]).toString().padStart(2, '0')
+    const d = (western[3] ? parseInt(western[3]) : 1).toString().padStart(2, '0')
+    return `${western[1]}-${m}-${d}`
+  }
+  return ''
+}
+
+// ---------------------------------------------------------------------------
 // OCR: 車検証からデータを抽出（GPT-4o Vision API使用）
 // ---------------------------------------------------------------------------
 
@@ -155,7 +185,9 @@ async function ocrVehicleInspection(file: File): Promise<{
     if (data.vehicle_number) result.vehicle_number = data.vehicle_number
     if (data.vehicle_model) result.vehicle_model = data.vehicle_model
     if (data.vehicle_year) result.vehicle_year = data.vehicle_year
-    if (data.vehicle_inspection_date) result.vehicle_inspection_date = data.vehicle_inspection_date
+    if (data.vehicle_inspection_date) {
+      result.vehicle_inspection_date = japaneseToISODate(data.vehicle_inspection_date) || data.vehicle_inspection_date
+    }
     return result
   }
 
@@ -229,7 +261,7 @@ function customerToForm(c: Customer): CustomerFormData {
     notes: c.notes ?? '',
     vehicle_model: c.vehicle_model ?? '',
     vehicle_year: c.vehicle_year ?? '',
-    vehicle_inspection_date: c.vehicle_inspection_date ?? '',
+    vehicle_inspection_date: japaneseToISODate(c.vehicle_inspection_date ?? '') || c.vehicle_inspection_date ?? '',
     vehicle_number: c.vehicle_number ?? '',
   }
 }
@@ -417,8 +449,8 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="v-insp">車検年月日</Label>
-                  <Input id="v-insp" value={form.vehicle_inspection_date} onChange={set('vehicle_inspection_date')} placeholder="令和7年10月" />
+                  <Label htmlFor="v-insp">車検満了日</Label>
+                  <Input id="v-insp" type="date" value={form.vehicle_inspection_date} onChange={set('vehicle_inspection_date')} />
                 </div>
               </div>
             )}
