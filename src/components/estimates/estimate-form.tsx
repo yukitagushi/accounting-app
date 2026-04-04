@@ -11,9 +11,10 @@ import { InvoicePreview } from '@/components/invoices/invoice-preview'
 import { createEstimate, updateEstimate } from '@/lib/mock-data'
 import { CustomerSearch } from '@/components/shared/customer-search'
 import type { Estimate, EstimateLineItem, TaxMode, Customer } from '@/lib/types'
-import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car, Download } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car, Download, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { ESTIMATE_TEMPLATES, calcWeightTax, type TemplateType } from '@/lib/estimate-templates'
 
 interface EstimateFormProps {
   initialData?: Estimate
@@ -59,6 +60,10 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
   const [saving, setSaving] = useState(false)
   const [showMobilePreview, setShowMobilePreview] = useState(false)
   const [showVehicleInfo, setShowVehicleInfo] = useState(!!initialData?.vehicle_name)
+
+  // Template auto-fill state
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null)
+  const [vehicleWeightStr, setVehicleWeightStr] = useState('')
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const [previewScale, setPreviewScale] = useState(0.5)
 
@@ -116,6 +121,54 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       if (customer.vehicle_number) setVehicleNumber(customer.vehicle_number)
       if (customer.vehicle_inspection_date) setNextInspectionDate(customer.vehicle_inspection_date)
     }
+  }
+
+  function handleApplyTemplate() {
+    if (!selectedTemplate) {
+      toast.error('テンプレートを選択してください')
+      return
+    }
+    const tmpl = ESTIMATE_TEMPLATES.find((t) => t.type === selectedTemplate)
+    if (!tmpl) return
+
+    const weightKg = vehicleWeightStr ? Number(vehicleWeightStr) : 0
+
+    if (tmpl.needsWeight && (!vehicleWeightStr || weightKg <= 0)) {
+      toast.error('車両重量を入力してください（重量税の計算に必要です）')
+      return
+    }
+
+    if (tmpl.lines.length === 0) {
+      toast.info('テンプレートを選択しました。明細を手動で追加してください。')
+      return
+    }
+
+    const newItems = tmpl.lines.map((l, i) => {
+      const unitPrice = l.unit_price === null ? calcWeightTax(weightKg) : l.unit_price
+      const amount = unitPrice * l.quantity
+      const partsAmount = l.category === '部品' ? amount : 0
+      const laborAmount = l.category === '技術' ? amount : 0
+      return {
+        id: `tpl-${Date.now()}-${i}`,
+        description: l.description,
+        category: l.category,
+        quantity: l.quantity,
+        unit_price: unitPrice,
+        tax_rate: l.tax_rate,
+        parts_amount: partsAmount,
+        labor_amount: laborAmount,
+        amount,
+      }
+    })
+
+    setLineItems(newItems)
+
+    // 車検系は車両情報セクションを開く
+    if (tmpl.needsWeight || selectedTemplate === 'vehicle_inspection_kei') {
+      setShowVehicleInfo(true)
+    }
+
+    toast.success(`「${tmpl.label}」のテンプレートを適用しました`)
   }
 
   function addLine() {
@@ -274,8 +327,70 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
     }
   }
 
+  const activeTemplate = ESTIMATE_TEMPLATES.find((t) => t.type === selectedTemplate)
+
   const formContent = (
     <div className="space-y-6">
+      {/* Template Auto-fill */}
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Wand2 className="w-4 h-4 text-blue-600" />
+          <h2 className="text-sm font-semibold text-blue-800">何を作りますか？</h2>
+          <span className="text-xs text-blue-500">テンプレートから明細を自動入力</span>
+        </div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {ESTIMATE_TEMPLATES.map((tmpl) => (
+            <button
+              key={tmpl.type}
+              type="button"
+              onClick={() => setSelectedTemplate(tmpl.type === selectedTemplate ? null : tmpl.type)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                selectedTemplate === tmpl.type
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-300'
+              )}
+            >
+              {tmpl.label}
+            </button>
+          ))}
+        </div>
+        {activeTemplate && activeTemplate.needsWeight && (
+          <div className="mb-4 max-w-xs">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+              車両重量 (kg) <span className="text-red-500">*</span>
+              <span className="ml-1 text-gray-400 font-normal">— 重量税の自動計算に使用</span>
+            </label>
+            <div className="relative">
+              <Input
+                type="number"
+                min={0}
+                value={vehicleWeightStr}
+                onChange={(e) => setVehicleWeightStr(e.target.value)}
+                placeholder="例: 1500"
+                className="h-9 text-sm pr-10"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">kg</span>
+            </div>
+            {vehicleWeightStr && Number(vehicleWeightStr) > 0 && (
+              <p className="mt-1 text-xs text-blue-600">
+                重量税: ¥{calcWeightTax(Number(vehicleWeightStr)).toLocaleString('ja-JP')}
+              </p>
+            )}
+          </div>
+        )}
+        {selectedTemplate && selectedTemplate !== 'other' && (
+          <button
+            type="button"
+            onClick={handleApplyTemplate}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            この情報で見積もりを作成
+          </button>
+        )}
+      </div>
+
       {/* Basic Info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
