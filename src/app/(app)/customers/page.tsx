@@ -171,15 +171,15 @@ function japaneseToISODate(str: string): string {
 async function compressImageForOCR(file: File): Promise<File> {
   // HEIC/HEIFはブラウザで表示できないのでそのまま返す
   if (file.type === 'image/heic' || file.type === 'image/heif') return file
-  // 既に小さければそのまま（1MB未満）
-  if (file.size < 1024 * 1024) return file
+  // 既に小さければそのまま（500KB未満）
+  if (file.size < 500 * 1024) return file
 
   return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const MAX_PX = 1280
+      const MAX_PX = 2048
       let { width, height } = img
       if (width > MAX_PX || height > MAX_PX) {
         if (width > height) {
@@ -201,7 +201,7 @@ async function compressImageForOCR(file: File): Promise<File> {
           resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
         },
         'image/jpeg',
-        0.75
+        0.85
       )
     }
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }

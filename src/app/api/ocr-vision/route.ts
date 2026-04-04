@@ -71,7 +71,7 @@ JSONのみ返してください。説明文は不要です。`,
                 type: 'image_url',
                 image_url: {
                   url: `data:${mimeType};base64,${base64}`,
-                  detail: 'auto',
+                  detail: 'high',
                 },
               },
             ],
@@ -101,12 +101,15 @@ JSONのみ返してください。説明文は不要です。`,
       return NextResponse.json({ error: 'Failed to parse Vision API response', raw: content }, { status: 422 })
     }
 
-    return NextResponse.json({
+    const result = {
       vehicle_number: parsed.vehicle_number ?? null,
       vehicle_model: parsed.vehicle_model ?? null,
       vehicle_year: parsed.vehicle_year ?? null,
       vehicle_inspection_date: parsed.vehicle_inspection_date ?? null,
-    })
+    }
+    const nonNullCount = Object.values(result).filter(Boolean).length
+    console.log(`[ocr-vision] extracted ${nonNullCount}/4 fields:`, JSON.stringify(result))
+    return NextResponse.json(result)
   } catch (err) {
     console.error('OCR Vision route error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
