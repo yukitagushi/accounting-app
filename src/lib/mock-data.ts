@@ -2,6 +2,7 @@ import type {
   Branch,
   Profile,
   Account,
+  Customer,
   JournalEntry,
   JournalEntryLine,
   VehicleInspection,
@@ -42,6 +43,117 @@ export const MOCK_ACCOUNTS: Account[] = DEFAULT_ACCOUNTS.map((a, i) => ({
   is_system: true,
   branch_id: 'branch-1',
 }))
+
+// ── Customers ────────────────────────────────────────────────────────────────
+
+export const MOCK_CUSTOMERS: Customer[] = [
+  {
+    id: 'cust-001', branch_id: 'branch-1', customer_code: 'C-001',
+    name: '盛岡いすゞモーター株式会社', name_kana: 'モリオカイスズモーター',
+    address: '〒020-0021 岩手県盛岡市中央通1-2-3', phone: '019-622-1234', fax: '019-622-1235',
+    email: 'info@morioka-isuzu.co.jp', contact_person: '佐藤 一郎',
+    payment_terms: '月末締め翌月末払い', notes: '', created_at: '2024-01-15T00:00:00Z', updated_at: '2024-01-15T00:00:00Z',
+  },
+  {
+    id: 'cust-002', branch_id: 'branch-1', customer_code: 'C-002',
+    name: '久慈運送株式会社', name_kana: 'クジウンソウ',
+    address: '〒028-0041 岩手県久慈市長内町25-10', phone: '0194-52-1111', fax: '0194-52-1112',
+    email: 'info@kuji-unsou.co.jp', contact_person: '田中 次郎',
+    payment_terms: '月末締め翌月末払い', notes: '大型トラック中心', created_at: '2024-02-01T00:00:00Z', updated_at: '2024-02-01T00:00:00Z',
+  },
+  {
+    id: 'cust-003', branch_id: 'branch-1', customer_code: 'C-003',
+    name: '岩手日野自動車株式会社', name_kana: 'イワテヒノジドウシャ',
+    address: '〒020-0834 岩手県盛岡市永井15-1', phone: '019-638-2222',
+    email: 'service@iwate-hino.co.jp', contact_person: '鈴木 三郎',
+    payment_terms: '月末締め翌月15日払い', notes: '', created_at: '2024-02-15T00:00:00Z', updated_at: '2024-02-15T00:00:00Z',
+  },
+  {
+    id: 'cust-004', branch_id: 'branch-1', customer_code: 'C-004',
+    name: '有限会社 山田建設', name_kana: 'ヤマダケンセツ',
+    address: '〒028-0051 岩手県久慈市川崎町5-8', phone: '0194-53-3333',
+    contact_person: '山田 四郎',
+    payment_terms: '都度払い', notes: 'ダンプ・重機整備', created_at: '2024-03-01T00:00:00Z', updated_at: '2024-03-01T00:00:00Z',
+  },
+  {
+    id: 'cust-005', branch_id: 'branch-1', customer_code: 'C-005',
+    name: '株式会社 沿岸物流', name_kana: 'エンガンブツリュウ',
+    address: '〒027-0038 岩手県宮古市小山田3-15', phone: '0193-62-4444', fax: '0193-62-4445',
+    email: 'info@engan-butsuryu.co.jp', contact_person: '高橋 五郎',
+    payment_terms: '月末締め翌月末払い', notes: '冷凍車多数', created_at: '2024-03-10T00:00:00Z', updated_at: '2024-03-10T00:00:00Z',
+  },
+  {
+    id: 'cust-006', branch_id: 'branch-2', customer_code: 'C-006',
+    name: '東北急行バス株式会社', name_kana: 'トウホクキュウコウバス',
+    address: '〒980-0021 宮城県仙台市青葉区中央2-6', phone: '022-265-5555',
+    email: 'maintenance@tohoku-bus.co.jp', contact_person: '伊藤 六郎',
+    payment_terms: '月末締め翌々月10日払い', notes: 'バス車検', created_at: '2024-04-01T00:00:00Z', updated_at: '2024-04-01T00:00:00Z',
+  },
+]
+
+let _nextCustomerId = MOCK_CUSTOMERS.length + 1
+
+export async function getCustomers(branchId?: string): Promise<Customer[]> {
+  await delay()
+  if (!branchId) return [...MOCK_CUSTOMERS]
+  return MOCK_CUSTOMERS.filter((c) => c.branch_id === branchId)
+}
+
+export async function getCustomer(id: string): Promise<Customer | null> {
+  await delay()
+  return MOCK_CUSTOMERS.find((c) => c.id === id) ?? null
+}
+
+export async function searchCustomers(keyword: string): Promise<Customer[]> {
+  await delay(200)
+  if (!keyword.trim()) return []
+  const keywords = keyword.toLowerCase().split(/\s+/)
+  return MOCK_CUSTOMERS.filter((c) => {
+    const searchable = [c.name, c.name_kana ?? '', c.customer_code, c.address, c.contact_person ?? '', c.phone ?? ''].join(' ').toLowerCase()
+    return keywords.every((kw) => searchable.includes(kw))
+  })
+}
+
+export async function createCustomer(data: Partial<Customer>): Promise<Customer> {
+  await delay(500)
+  const now = new Date().toISOString()
+  const num = String(_nextCustomerId++).padStart(3, '0')
+  const newCustomer: Customer = {
+    id: `cust-${num}`,
+    branch_id: data.branch_id ?? 'branch-1',
+    customer_code: data.customer_code ?? `C-${num}`,
+    name: data.name ?? '',
+    name_kana: data.name_kana,
+    address: data.address ?? '',
+    phone: data.phone,
+    fax: data.fax,
+    email: data.email,
+    contact_person: data.contact_person,
+    payment_terms: data.payment_terms,
+    notes: data.notes ?? '',
+    created_at: now,
+    updated_at: now,
+  }
+  MOCK_CUSTOMERS.push(newCustomer)
+  return newCustomer
+}
+
+export async function updateCustomer(id: string, data: Partial<Customer>): Promise<Customer | null> {
+  await delay(500)
+  const idx = MOCK_CUSTOMERS.findIndex((c) => c.id === id)
+  if (idx === -1) return null
+  const updated: Customer = { ...MOCK_CUSTOMERS[idx], ...data, updated_at: new Date().toISOString() }
+  MOCK_CUSTOMERS[idx] = updated
+  return updated
+}
+
+export async function deleteCustomer(id: string): Promise<boolean> {
+  await delay(300)
+  const idx = MOCK_CUSTOMERS.findIndex((c) => c.id === id)
+  if (idx === -1) return false
+  MOCK_CUSTOMERS.splice(idx, 1)
+  return true
+}
 
 function acctByCode(code: string): Account {
   const acc = MOCK_ACCOUNTS.find((a) => a.code === code)

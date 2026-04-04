@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { CurrencyInput } from '@/components/shared/currency-input'
 import { InvoicePreview } from '@/components/invoices/invoice-preview'
 import { createEstimate, updateEstimate } from '@/lib/mock-data'
-import type { Estimate, EstimateLineItem, TaxMode } from '@/lib/types'
+import { CustomerSearch } from '@/components/shared/customer-search'
+import type { Estimate, EstimateLineItem, TaxMode, Customer } from '@/lib/types'
 import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -103,6 +104,12 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
     window.addEventListener('resize', updateScale)
     return () => window.removeEventListener('resize', updateScale)
   }, [])
+
+  function handleCustomerSelect(customer: Customer) {
+    setCustomerName(customer.name)
+    setCustomerAddress(customer.address)
+    setCustomerCode(customer.customer_code)
+  }
 
   function addLine() {
     setLineItems((prev) => [
@@ -268,6 +275,13 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       {/* Basic Info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
+        <div className="mb-4">
+          <Label className="mb-1.5 block">顧客検索</Label>
+          <CustomerSearch
+            onSelect={handleCustomerSelect}
+            currentCustomerName={customerName}
+          />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="customerName">顧客名 <span className="text-red-500">*</span></Label>

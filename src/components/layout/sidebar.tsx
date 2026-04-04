@@ -9,6 +9,7 @@ import {
   Car,
   FileText,
   Receipt,
+  Users,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
   },
   { label: '車検管理', href: '/vehicle-inspection', icon: Car },
   { label: '見積書', href: '/estimates', icon: FileText },
+  { label: '顧客管理', href: '/customers', icon: Users },
   { label: '請求書', href: '/invoices', icon: Receipt },
   { label: '会計管理', href: '/accounting', icon: Calculator },
 ] as const

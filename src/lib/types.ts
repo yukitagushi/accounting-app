@@ -1,3 +1,21 @@
+// Customer (顧客)
+export type Customer = {
+  id: string
+  branch_id: string
+  customer_code: string
+  name: string
+  name_kana?: string
+  address: string
+  phone?: string
+  fax?: string
+  email?: string
+  contact_person?: string
+  payment_terms?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+}
+
 // Branch
 export type Branch = { id: string; name: string; code: string; address?: string; phone?: string; created_at: string }
 

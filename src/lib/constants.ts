@@ -77,6 +77,7 @@ export const NAV_ITEMS = [
   { label: '仕訳管理', href: '/journal', icon: 'BookOpen' },
   { label: '車検管理', href: '/vehicle-inspection', icon: 'Car' },
   { label: '見積書', href: '/estimates', icon: 'FileText' },
+  { label: '顧客管理', href: '/customers', icon: 'Users' },
   { label: '請求書', href: '/invoices', icon: 'Receipt' },
   { label: '会計管理', href: '/accounting', icon: 'Calculator' },
   { label: '設定', href: '/settings', icon: 'Settings' },
