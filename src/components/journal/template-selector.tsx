@@ -112,6 +112,70 @@ const TEMPLATES: JournalTemplate[] = [
       { accountCode: '1010', side: 'credit', label: '普通預金' },
     ],
   },
+  {
+    id: 'shaken-azukari-jibaiseki',
+    name: '自賠責保険 預かり',
+    description: '車検時の自賠責保険料を顧客から預かる',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '1000', side: 'debit', label: '現金（預かり）' },
+      { accountCode: '2220', side: 'credit', label: '自賠責保険預り金' },
+    ],
+  },
+  {
+    id: 'shaken-azukari-jibaiseki-bank',
+    name: '自賠責保険 預かり（振込）',
+    description: '車検時の自賠責保険料を銀行振込で預かる',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '1010', side: 'debit', label: '普通預金（預かり）' },
+      { accountCode: '2220', side: 'credit', label: '自賠責保険預り金' },
+    ],
+  },
+  {
+    id: 'shaken-azukari-weight-tax',
+    name: '重量税 預かり',
+    description: '車検時の自動車重量税を顧客から預かる',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '1000', side: 'debit', label: '現金（預かり）' },
+      { accountCode: '2230', side: 'credit', label: '重量税預り金' },
+    ],
+  },
+  {
+    id: 'shaken-azukari-stamp',
+    name: '印紙代 預かり',
+    description: '車検時の印紙代を顧客から預かる',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '1000', side: 'debit', label: '現金（預かり）' },
+      { accountCode: '2240', side: 'credit', label: '印紙代預り金' },
+    ],
+  },
+  {
+    id: 'shaken-azukari-all',
+    name: '車検預かり金 一括',
+    description: '自賠責・重量税・印紙を一括預かり（現金）',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '1000', side: 'debit', label: '現金（預かり合計）' },
+      { accountCode: '2220', side: 'credit', label: '自賠責保険預り金' },
+      { accountCode: '2230', side: 'credit', label: '重量税預り金' },
+      { accountCode: '2240', side: 'credit', label: '印紙代預り金' },
+    ],
+  },
+  {
+    id: 'shaken-azukari-payment',
+    name: '車検預かり金 支払',
+    description: '預かった自賠責・重量税・印紙を実際に支払う',
+    entry_type: 'vehicle_inspection',
+    lines: [
+      { accountCode: '2220', side: 'debit', label: '自賠責保険預り金' },
+      { accountCode: '2230', side: 'debit', label: '重量税預り金' },
+      { accountCode: '2240', side: 'debit', label: '印紙代預り金' },
+      { accountCode: '1000', side: 'credit', label: '現金（支払）' },
+    ],
+  },
 ]
 
 // ── Helper to convert template to form lines ──────────────────────────────────
@@ -197,6 +261,12 @@ interface TemplateSelectorProps {
   className?: string
 }
 
+const TEMPLATE_GROUPS: Array<{ label: string; type: JournalEntryType; color: string }> = [
+  { label: '🚗 車検仕訳', type: 'vehicle_inspection', color: 'text-emerald-700' },
+  { label: '🔄 振替伝票', type: 'transfer', color: 'text-purple-700' },
+  { label: '📋 通常仕訳', type: 'normal', color: 'text-blue-700' },
+]
+
 export function TemplateSelector({ accounts, onSelect, className }: TemplateSelectorProps) {
   const [open, setOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -235,16 +305,24 @@ export function TemplateSelector({ accounts, onSelect, className }: TemplateSele
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.97 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute right-0 top-full z-50 mt-2 w-[520px] rounded-2xl border border-border bg-popover p-3 shadow-xl"
+                className="absolute right-0 top-full z-50 mt-2 w-[560px] rounded-2xl border border-border bg-popover p-3 shadow-xl overflow-y-auto max-h-[80vh]"
               >
-                <p className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  よく使うテンプレート
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {TEMPLATES.map((t) => (
-                    <TemplateCard key={t.id} template={t} onSelect={handleSelect} />
-                  ))}
-                </div>
+                {TEMPLATE_GROUPS.map((group) => {
+                  const grouped = TEMPLATES.filter((t) => t.entry_type === group.type)
+                  if (!grouped.length) return null
+                  return (
+                    <div key={group.type} className="mb-4 last:mb-0">
+                      <p className={cn('mb-2 px-1 text-xs font-semibold', group.color)}>
+                        {group.label}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {grouped.map((t) => (
+                          <TemplateCard key={t.id} template={t} onSelect={handleSelect} />
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </motion.div>
             </>
           )}
@@ -264,17 +342,30 @@ export function TemplateSelector({ accounts, onSelect, className }: TemplateSele
           テンプレート
         </Button>
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl p-0">
+          <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl p-0">
             <SheetHeader className="px-4 pt-4 pb-3 border-b border-border">
               <SheetTitle className="flex items-center gap-2">
                 <Zap className="size-4 text-primary" />
                 テンプレートを選択
               </SheetTitle>
             </SheetHeader>
-            <div className="overflow-y-auto p-4 grid gap-3" style={{ height: 'calc(85vh - 80px)' }}>
-              {TEMPLATES.map((t) => (
-                <TemplateCard key={t.id} template={t} onSelect={handleSelect} />
-              ))}
+            <div className="overflow-y-auto p-4 space-y-5" style={{ height: 'calc(90vh - 80px)' }}>
+              {TEMPLATE_GROUPS.map((group) => {
+                const grouped = TEMPLATES.filter((t) => t.entry_type === group.type)
+                if (!grouped.length) return null
+                return (
+                  <div key={group.type}>
+                    <p className={cn('mb-2 text-sm font-semibold', group.color)}>
+                      {group.label}
+                    </p>
+                    <div className="grid gap-2">
+                      {grouped.map((t) => (
+                        <TemplateCard key={t.id} template={t} onSelect={handleSelect} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </SheetContent>
         </Sheet>
