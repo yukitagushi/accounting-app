@@ -44,6 +44,10 @@ create table public.customers (
   contact_person text,
   payment_terms text,
   notes text default '',
+  vehicle_model text,
+  vehicle_year text,
+  vehicle_number text,
+  vehicle_inspection_date text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

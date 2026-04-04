@@ -794,8 +794,10 @@ export default function CustomersPage() {
       setCustomers((prev) => [...prev, created])
       setAddDialogOpen(false)
       toast.success('顧客を登録しました')
-    } catch {
-      toast.error('登録に失敗しました')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('顧客登録エラー:', e)
+      toast.error(`登録に失敗しました: ${msg}`)
     } finally {
       setSaving(false)
     }
