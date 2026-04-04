@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 - vehicle_number: 登録番号（例: "岩手 300 あ 1234"）
 - vehicle_model: 車名（例: "アルファード", "プリウス"）
 - vehicle_year: 初度登録年（元号または西暦、例: "令和3年" または "2021"）
-- vehicle_inspection_date: 有効期間の満了する日（例: "令和7年10月31日" または "2025年10月31日"）
+- vehicle_inspection_date: 有効期間の満了する日（YYYY-MM-DD形式で返してください、例: "2025-10-31"）
 JSONのみ返してください。説明文は不要です。`,
               },
               {

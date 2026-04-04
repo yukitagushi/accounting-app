@@ -13,6 +13,8 @@ import { createJournalEntry, createVehicleInspection, updateVehicleInspection } 
 import type { VehicleInspection, VehicleInspectionStatus } from '@/lib/types'
 import { CheckCircle, Circle, Clock, Car, ChevronRight, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
+import { CustomerSearch } from '@/components/shared/customer-search'
+import type { Customer } from '@/lib/types'
 
 type ItemKey = typeof VEHICLE_INSPECTION_ITEMS[number]['key']
 
@@ -92,6 +94,18 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
     if (currentStatusIdx < STATUS_ORDER.length - 1) {
       setStatus(STATUS_ORDER[currentStatusIdx + 1])
     }
+  }
+
+  function handleCustomerSelect(customer: Customer) {
+    setCustomerName(customer.name)
+    if (customer.vehicle_number) setVehicleNumber(customer.vehicle_number)
+    if (customer.vehicle_inspection_date) {
+      // YYYY-MM-DD形式に変換して設定
+      const d = customer.vehicle_inspection_date
+      const iso = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : ''
+      if (iso) setInspectionDate(iso)
+    }
+    toast.success(`${customer.name} を選択しました`)
   }
 
   async function handleSave() {
@@ -386,6 +400,13 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
       {/* Customer Info */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-4">顧客情報</p>
+
+        {/* Customer Search */}
+        <div className="mb-4">
+          <label className="block text-xs text-gray-500 mb-1.5">顧客検索（選択すると車両情報が自動入力されます）</label>
+          <CustomerSearch onSelect={handleCustomerSelect} currentCustomerName={customerName} />
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="customerName">顧客名 <span className="text-red-500">*</span></Label>
