@@ -11,7 +11,7 @@ import { InvoicePreview } from '@/components/invoices/invoice-preview'
 import { createInvoice, updateInvoice, getEstimate } from '@/lib/mock-data'
 import { CustomerSearch } from '@/components/shared/customer-search'
 import type { Invoice, InvoiceLineItem, TaxMode, Customer } from '@/lib/types'
-import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -634,6 +634,72 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
         <Button variant="outline" onClick={() => handleSave('draft')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Save className="w-4 h-4" />
           下書き保存
+        </Button>
+        <Button
+          variant="outline"
+          disabled={saving}
+          className="gap-1.5 h-12 sm:h-auto border-green-300 text-green-700 hover:bg-green-50"
+          onClick={async () => {
+            if (!customerName.trim()) { toast.error('顧客名を入力してください'); return }
+            setSaving(true)
+            try {
+              let savedId = initialData?.id
+              if (mode === 'edit' && initialData) {
+                const preserveStatus = initialData.status === 'paid' || initialData.status === 'void'
+                await updateInvoice(initialData.id, {
+                  customer_name: customerName, customer_address: customerAddress, customer_code: customerCode || undefined,
+                  issue_date: issueDate, due_date: dueDate, tax_mode: taxMode, subtotal, tax_amount: taxAmount, total,
+                  discount: discount || undefined, status: preserveStatus ? initialData.status : 'draft', notes,
+                  estimate_id: estimateRef || undefined,
+                  vehicle_name: vehicleName || undefined, vehicle_number: vehicleNumber || undefined,
+                  mileage: mileageStr ? Number(mileageStr) : undefined,
+                  first_registration: firstRegistration || undefined, next_inspection_date: nextInspectionDate || undefined,
+                  delivery_date: deliveryDate || undefined, delivery_category: deliveryCategory || undefined, staff_name: staffName || undefined,
+                  line_items: lineItems.map((l, i) => ({
+                    id: l.id, invoice_id: initialData.id, description: l.description, category: l.category || undefined,
+                    quantity: typeof l.quantity === 'number' ? l.quantity : 0, unit_price: typeof l.unit_price === 'number' ? l.unit_price : 0,
+                    tax_rate: l.tax_rate, parts_amount: l.parts_amount || undefined, labor_amount: l.labor_amount || undefined,
+                    amount: l.amount, line_order: i + 1,
+                  })) as InvoiceLineItem[],
+                })
+              } else {
+                const created = await createInvoice({
+                  customer_name: customerName, customer_address: customerAddress, customer_code: customerCode || undefined,
+                  issue_date: issueDate, due_date: dueDate, tax_mode: taxMode, subtotal, tax_amount: taxAmount, total,
+                  discount: discount || undefined, status: 'draft', notes, estimate_id: estimateRef || undefined,
+                  vehicle_name: vehicleName || undefined, vehicle_number: vehicleNumber || undefined,
+                  mileage: mileageStr ? Number(mileageStr) : undefined,
+                  first_registration: firstRegistration || undefined, next_inspection_date: nextInspectionDate || undefined,
+                  delivery_date: deliveryDate || undefined, delivery_category: deliveryCategory || undefined, staff_name: staffName || undefined,
+                  line_items: lineItems.map((l, i) => ({
+                    id: l.id, invoice_id: '', description: l.description, category: l.category || undefined,
+                    quantity: typeof l.quantity === 'number' ? l.quantity : 0, unit_price: typeof l.unit_price === 'number' ? l.unit_price : 0,
+                    tax_rate: l.tax_rate, parts_amount: l.parts_amount || undefined, labor_amount: l.labor_amount || undefined,
+                    amount: l.amount, line_order: i + 1,
+                  })) as InvoiceLineItem[],
+                })
+                savedId = created.id
+              }
+              const res = await fetch(`/api/pdf/invoice?id=${savedId}`)
+              if (!res.ok) throw new Error('PDF生成に失敗しました')
+              const blob = await res.blob()
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `請求書_${customerName}_${issueDate}.pdf`
+              a.click()
+              URL.revokeObjectURL(url)
+              toast.success('保存してPDFをダウンロードしました')
+              if (savedId && savedId !== initialData?.id) router.push(`/invoices/${savedId}`)
+            } catch {
+              toast.error('保存またはPDF生成に失敗しました')
+            } finally {
+              setSaving(false)
+            }
+          }}
+        >
+          <Download className="w-4 h-4" />
+          保存してPDF
         </Button>
         <Button onClick={() => handleSave('sent')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Send className="w-4 h-4" />

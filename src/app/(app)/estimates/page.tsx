@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getEstimates } from '@/lib/mock-data'
 import type { Estimate, EstimateStatus } from '@/lib/types'
-import { Plus, FileText, Search, Calendar, User } from 'lucide-react'
+import { Plus, FileText, Search, Calendar, User, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportEstimates } from '@/lib/csv-export'
@@ -31,6 +31,7 @@ export default function EstimatesPage() {
   const [search, setSearch] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
 
   useEffect(() => {
     getEstimates().then(setEstimates)
@@ -42,7 +43,7 @@ export default function EstimatesPage() {
     if (dateFrom && e.issue_date < dateFrom) return false
     if (dateTo && e.issue_date > dateTo) return false
     return true
-  })
+  }).sort((a, b) => sortOrder === 'newest' ? b.issue_date.localeCompare(a.issue_date) : a.issue_date.localeCompare(b.issue_date))
 
   const totalAmount = estimates.reduce((sum, e) => sum + e.total, 0)
   const draftCount = estimates.filter((e) => e.status === 'draft').length
@@ -136,6 +137,15 @@ export default function EstimatesPage() {
               className="h-8 text-sm w-36"
             />
           </div>
+
+          {/* Sort */}
+          <button
+            onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            {sortOrder === 'newest' ? '新しい順' : '古い順'}
+          </button>
         </div>
       </div>
 
