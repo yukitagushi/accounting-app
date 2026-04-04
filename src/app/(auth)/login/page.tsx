@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { createClient } from '@/lib/supabase/client'
 
 const DEMO_ACCOUNTS = [
   { email: 'admin@autoaccount.demo', password: 'demo1234', role: '管理者', branch: '本社' },
@@ -26,20 +27,25 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    // Demo mode: accept demo credentials or any credentials
-    const isDemoAccount = DEMO_ACCOUNTS.some(
-      (acc) => acc.email === email && acc.password === password
-    )
+    try {
+      const supabase = createClient()
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (isDemoAccount) {
-      // Simulate login delay
-      await new Promise((r) => setTimeout(r, 800))
+      if (authError) {
+        setError('メールアドレスまたはパスワードが正しくありません。')
+        setLoading(false)
+        return
+      }
+
       router.push('/dashboard')
-      return
+      router.refresh()
+    } catch {
+      setError('ログインに失敗しました。')
+      setLoading(false)
     }
-
-    setError('メールアドレスまたはパスワードが正しくありません。')
-    setLoading(false)
   }
 
   function handleDemoLogin(account: typeof DEMO_ACCOUNTS[0]) {
