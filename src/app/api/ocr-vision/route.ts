@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+// OpenAI Vision API supports JPEG, PNG, WebP, GIF only — NOT HEIC/HEIF
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -24,7 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: 'Invalid file type. Only images are allowed.' }, { status: 400 })
+      // HEIC/HEIF (iPhone default format) is not supported by OpenAI Vision API
+      if (file.type === 'image/heic' || file.type === 'image/heif') {
+        return NextResponse.json({ error: 'HEIC_NOT_SUPPORTED', details: 'iPhoneのHEIC形式はVision APIに対応していません。ConvertAPIで処理します。' }, { status: 415 })
+      }
+      return NextResponse.json({ error: 'Invalid file type. Only JPEG, PNG, WebP are allowed.' }, { status: 400 })
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -33,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
-    const mimeType = file.type === 'image/heic' || file.type === 'image/heif' ? 'image/jpeg' : file.type
+    const mimeType = file.type
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

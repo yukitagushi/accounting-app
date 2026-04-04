@@ -174,28 +174,56 @@ async function ocrVehicleInspection(file: File): Promise<{
   vehicle_inspection_date?: string
   vehicle_number?: string
 }> {
-  const formData = new FormData()
-  formData.append('file', file)
+  const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
 
-  // まずVision APIを試みる
-  const visionRes = await fetch('/api/ocr-vision', { method: 'POST', body: formData })
-  if (visionRes.ok) {
-    const data = await visionRes.json()
-    const result: Record<string, string> = {}
-    if (data.vehicle_number) result.vehicle_number = data.vehicle_number
-    if (data.vehicle_model) result.vehicle_model = data.vehicle_model
-    if (data.vehicle_year) result.vehicle_year = data.vehicle_year
-    if (data.vehicle_inspection_date) {
-      result.vehicle_inspection_date = japaneseToISODate(data.vehicle_inspection_date) || data.vehicle_inspection_date
+  // HEIC以外はVision APIを試みる
+  if (!isHeic) {
+    const formData = new FormData()
+    formData.append('file', file)
+    let visionRes: Response
+    try {
+      visionRes = await fetch('/api/ocr-vision', { method: 'POST', body: formData })
+    } catch {
+      visionRes = new Response(null, { status: 0 })
     }
-    return result
+    if (visionRes.ok) {
+      const data = await visionRes.json()
+      if (!data.error) {
+        const result: Record<string, string> = {}
+        if (data.vehicle_number) result.vehicle_number = data.vehicle_number
+        if (data.vehicle_model) result.vehicle_model = data.vehicle_model
+        if (data.vehicle_year) result.vehicle_year = data.vehicle_year
+        if (data.vehicle_inspection_date) {
+          result.vehicle_inspection_date = japaneseToISODate(data.vehicle_inspection_date) || data.vehicle_inspection_date
+        }
+        return result
+      }
+    }
+    // Vision APIが失敗した場合はConvertAPIにフォールバック（エラーは無視）
   }
 
-  // Vision APIが使えない場合はConvertAPI OCR + 正規表現にフォールバック
+  // ConvertAPI OCR + 正規表現にフォールバック
   const ocrFormData = new FormData()
   ocrFormData.append('file', file)
-  const res = await fetch('/api/ocr', { method: 'POST', body: ocrFormData })
-  if (!res.ok) throw new Error('OCR処理に失敗しました')
+  let res: Response
+  try {
+    res = await fetch('/api/ocr', { method: 'POST', body: ocrFormData })
+  } catch {
+    throw new Error('ネットワークエラーが発生しました。インターネット接続を確認してください。')
+  }
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const errData = await res.json()
+      if (errData.error?.includes('CONVERTAPI_SECRET') || errData.error?.includes('not configured')) {
+        throw new Error('OCR機能のAPIキーが設定されていません。管理者にVercelの環境変数（OPENAI_API_KEY・CONVERTAPI_SECRET）を設定するよう依頼してください。')
+      }
+      detail = errData.error || errData.details || ''
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('APIキー')) throw e
+    }
+    throw new Error(detail ? `OCR処理に失敗しました: ${detail}` : 'OCR処理に失敗しました')
+  }
   const { text } = await res.json()
   if (!text) return {}
 
@@ -261,7 +289,7 @@ function customerToForm(c: Customer): CustomerFormData {
     notes: c.notes ?? '',
     vehicle_model: c.vehicle_model ?? '',
     vehicle_year: c.vehicle_year ?? '',
-    vehicle_inspection_date: japaneseToISODate(c.vehicle_inspection_date ?? '') || c.vehicle_inspection_date ?? '',
+    vehicle_inspection_date: (japaneseToISODate(c.vehicle_inspection_date ?? '') || c.vehicle_inspection_date) ?? '',
     vehicle_number: c.vehicle_number ?? '',
   }
 }
@@ -307,8 +335,9 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
       }))
       setShowVehicle(true)
       toast.success('車検証を読み取りました')
-    } catch {
-      toast.error('OCR読み取りに失敗しました')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'OCR読み取りに失敗しました'
+      toast.error(message)
     } finally {
       setOcrLoading(false)
       if (ocrRef.current) ocrRef.current.value = ''
