@@ -15,7 +15,6 @@ export type Customer = {
   // 車両情報
   vehicle_model?: string
   vehicle_year?: string
-  vehicle_registration_date?: string
   vehicle_inspection_date?: string
   vehicle_number?: string
   created_at: string

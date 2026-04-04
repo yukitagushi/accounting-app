@@ -49,7 +49,6 @@ export async function createCustomer(input: Partial<Customer>): Promise<Customer
     notes: input.notes ?? '',
     vehicle_model: input.vehicle_model,
     vehicle_year: input.vehicle_year,
-    vehicle_registration_date: input.vehicle_registration_date,
     vehicle_inspection_date: input.vehicle_inspection_date,
     vehicle_number: input.vehicle_number,
   }).select().single()

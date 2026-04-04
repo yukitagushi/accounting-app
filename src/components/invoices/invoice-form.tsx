@@ -198,7 +198,6 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
       if (customer.vehicle_model) setVehicleName(customer.vehicle_model)
       if (customer.vehicle_number) setVehicleNumber(customer.vehicle_number)
       if (customer.vehicle_inspection_date) setNextInspectionDate(customer.vehicle_inspection_date)
-      if (customer.vehicle_registration_date) setFirstRegistration(customer.vehicle_registration_date)
     }
   }
 

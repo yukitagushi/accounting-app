@@ -90,7 +90,6 @@ const CSV_COLUMN_MAP: Record<string, keyof Customer> = {
   備考: 'notes',
   車種: 'vehicle_model',
   年式: 'vehicle_year',
-  初年度登録: 'vehicle_registration_date',
   車検年月日: 'vehicle_inspection_date',
   車両番号: 'vehicle_number',
 }
@@ -123,7 +122,6 @@ function customerToCSVRow(c: Customer): string {
     c.notes ?? '',
     c.vehicle_model ?? '',
     c.vehicle_year ?? '',
-    c.vehicle_registration_date ?? '',
     c.vehicle_inspection_date ?? '',
     c.vehicle_number ?? '',
   ]
@@ -131,7 +129,7 @@ function customerToCSVRow(c: Customer): string {
 }
 
 function generateCSV(customers: Customer[]): string {
-  const header = '顧客コード,顧客名,フリガナ,住所,電話番号,FAX,メール,担当者,支払条件,備考,車種,年式,初年度登録,車検年月日,車両番号'
+  const header = '顧客コード,顧客名,フリガナ,住所,電話番号,FAX,メール,担当者,支払条件,備考,車種,年式,車検年月日,車両番号'
   const rows = customers.map(customerToCSVRow)
   return [header, ...rows].join('\n')
 }
@@ -143,7 +141,6 @@ function generateCSV(customers: Customer[]): string {
 async function ocrVehicleInspection(file: File): Promise<{
   vehicle_model?: string
   vehicle_year?: string
-  vehicle_registration_date?: string
   vehicle_inspection_date?: string
   vehicle_number?: string
 }> {
@@ -163,12 +160,12 @@ async function ocrVehicleInspection(file: File): Promise<{
     result.vehicle_number = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${plateMatch[4]}`
   }
 
-  // 初年度登録: 例「令和3年」「R03」「2021年」
-  const regMatch = text.match(/初年度登録[^\d年]*([令平昭]\s*和?\s*\d+|[12]\d{3})年?/)
-  if (regMatch) result.vehicle_registration_date = regMatch[1]
+  // 年式: 初度登録年月から年を抽出 (例「令和3年5月」→「令和3年」「2021年」)
+  const yearMatch = text.match(/初度登録年月[^\d年]*([令平昭]\s*和?\s*\d+|[12]\d{3})/)
+  if (yearMatch) result.vehicle_year = yearMatch[1]
 
-  // 車検有効期限: 例「令和7年10月」
-  const inspMatch = text.match(/有効期限[^\d年]*([令平昭]\s*和?\s*\d+年\d+月|[12]\d{3}年\d+月)/)
+  // 車検有効期限: 車検証は「有効期間の満了する日」と記載
+  const inspMatch = text.match(/(?:有効期間の満了する日|有効期限)[^\d年]*([令平昭]\s*和?\s*\d+年\d+月|[12]\d{3}年\d+月)/)
   if (inspMatch) result.vehicle_inspection_date = inspMatch[1]
 
   // 車種/型式: 例「アルファード」「プリウス」行を探す
@@ -198,7 +195,6 @@ type CustomerFormData = {
   notes: string
   vehicle_model: string
   vehicle_year: string
-  vehicle_registration_date: string
   vehicle_inspection_date: string
   vehicle_number: string
 }
@@ -217,7 +213,6 @@ function customerToForm(c: Customer): CustomerFormData {
     notes: c.notes ?? '',
     vehicle_model: c.vehicle_model ?? '',
     vehicle_year: c.vehicle_year ?? '',
-    vehicle_registration_date: c.vehicle_registration_date ?? '',
     vehicle_inspection_date: c.vehicle_inspection_date ?? '',
     vehicle_number: c.vehicle_number ?? '',
   }
@@ -258,7 +253,6 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
       setForm((prev) => ({
         ...prev,
         vehicle_model: extracted.vehicle_model ?? prev.vehicle_model,
-        vehicle_registration_date: extracted.vehicle_registration_date ?? prev.vehicle_registration_date,
         vehicle_inspection_date: extracted.vehicle_inspection_date ?? prev.vehicle_inspection_date,
         vehicle_number: extracted.vehicle_number ?? prev.vehicle_number,
       }))
@@ -405,15 +399,9 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
                   <Input id="v-number" value={form.vehicle_number} onChange={set('vehicle_number')} placeholder="岩手 300 あ 1234" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="v-reg">初年度登録</Label>
-                    <Input id="v-reg" value={form.vehicle_registration_date} onChange={set('vehicle_registration_date')} placeholder="令和3年" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="v-insp">車検年月日</Label>
-                    <Input id="v-insp" value={form.vehicle_inspection_date} onChange={set('vehicle_inspection_date')} placeholder="令和7年10月" />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="v-insp">車検年月日</Label>
+                  <Input id="v-insp" value={form.vehicle_inspection_date} onChange={set('vehicle_inspection_date')} placeholder="令和7年10月" />
                 </div>
               </div>
             )}
@@ -511,7 +499,7 @@ function CSVImportDialog({ onClose, onImport, importing }: CSVImportDialogProps)
             <Label>CSVファイルを選択</Label>
             <Input ref={fileRef} type="file" accept=".csv" onChange={handleFile} />
             <p className="text-xs text-gray-400">
-              必須列: 顧客コード, 顧客名, 住所 / 任意列: フリガナ, 電話番号, FAX, メール, 担当者, 支払条件, 備考, 車種, 年式, 初年度登録, 車検年月日, 車両番号
+              必須列: 顧客コード, 顧客名, 住所 / 任意列: フリガナ, 電話番号, FAX, メール, 担当者, 支払条件, 備考, 車種, 年式, 車検年月日, 車両番号
             </p>
           </div>
 
@@ -675,7 +663,6 @@ export default function CustomersPage() {
         notes: form.notes || undefined,
         vehicle_model: form.vehicle_model || undefined,
         vehicle_year: form.vehicle_year || undefined,
-        vehicle_registration_date: form.vehicle_registration_date || undefined,
         vehicle_inspection_date: form.vehicle_inspection_date || undefined,
         vehicle_number: form.vehicle_number || undefined,
       })
@@ -707,7 +694,6 @@ export default function CustomersPage() {
           notes: form.notes || undefined,
           vehicle_model: form.vehicle_model || undefined,
           vehicle_year: form.vehicle_year || undefined,
-          vehicle_registration_date: form.vehicle_registration_date || undefined,
           vehicle_inspection_date: form.vehicle_inspection_date || undefined,
           vehicle_number: form.vehicle_number || undefined,
         })
@@ -1067,7 +1053,6 @@ const EMPTY_FORM: CustomerFormData = {
   notes: '',
   vehicle_model: '',
   vehicle_year: '',
-  vehicle_registration_date: '',
   vehicle_inspection_date: '',
   vehicle_number: '',
 }
