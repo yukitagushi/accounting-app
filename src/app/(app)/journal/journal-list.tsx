@@ -161,6 +161,9 @@ interface Filters {
   status: JournalEntryStatus | ''
   dateFrom: string
   dateTo: string
+  accountId: string
+  amountMin: string
+  amountMax: string
 }
 
 const STATUSES: Array<{ key: JournalEntryStatus; label: string }> = [
@@ -179,6 +182,9 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
     status: '',
     dateFrom: '',
     dateTo: '',
+    accountId: '',
+    amountMin: '',
+    amountMax: '',
   })
   const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
@@ -189,6 +195,15 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
       if (filters.status && e.status !== filters.status) return false
       if (filters.dateFrom && e.entry_date < filters.dateFrom) return false
       if (filters.dateTo && e.entry_date > filters.dateTo) return false
+      if (filters.accountId) {
+        const hasAccount = (e.lines ?? []).some((l) => l.account_id === filters.accountId)
+        if (!hasAccount) return false
+      }
+      if (filters.amountMin || filters.amountMax) {
+        const totalDebit = (e.lines ?? []).reduce((s, l) => s + l.debit_amount, 0)
+        if (filters.amountMin && totalDebit < Number(filters.amountMin)) return false
+        if (filters.amountMax && totalDebit > Number(filters.amountMax)) return false
+      }
       if (filters.search) {
         const q = filters.search.toLowerCase()
         const matchDesc = e.description.toLowerCase().includes(q)
@@ -213,7 +228,7 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
     setPage(1)
   }
 
-  const hasActiveFilters = filters.type || filters.status || filters.dateFrom || filters.dateTo
+  const hasActiveFilters = filters.type || filters.status || filters.dateFrom || filters.dateTo || filters.accountId || filters.amountMin || filters.amountMax
 
   return (
     <div className="space-y-4">
@@ -243,7 +258,7 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
           <span className="hidden sm:inline">フィルター</span>
           {hasActiveFilters && (
             <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold">
-              {[filters.type, filters.status, filters.dateFrom, filters.dateTo].filter(Boolean).length}
+              {[filters.type, filters.status, filters.dateFrom, filters.dateTo, filters.accountId, filters.amountMin, filters.amountMax].filter(Boolean).length}
             </span>
           )}
         </Button>
@@ -317,6 +332,47 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
                 </div>
               </div>
 
+              {/* Account */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">勘定科目</label>
+                <select
+                  value={filters.accountId}
+                  onChange={(e) => updateFilter('accountId', e.target.value)}
+                  className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+                >
+                  <option value="">すべて</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Amount min */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">金額（下限）</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={filters.amountMin}
+                  onChange={(e) => updateFilter('amountMin', e.target.value)}
+                  placeholder="例: 10000"
+                  className="h-8"
+                />
+              </div>
+
+              {/* Amount max */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">金額（上限）</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={filters.amountMax}
+                  onChange={(e) => updateFilter('amountMax', e.target.value)}
+                  placeholder="例: 100000"
+                  className="h-8"
+                />
+              </div>
+
               {/* Reset */}
               <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
                 <Button
@@ -324,7 +380,7 @@ export function JournalList({ initialEntries, accounts }: JournalListProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setFilters({ search: '', type: '', status: '', dateFrom: '', dateTo: '' })
+                    setFilters({ search: '', type: '', status: '', dateFrom: '', dateTo: '', accountId: '', amountMin: '', amountMax: '' })
                     setPage(1)
                   }}
                   className="text-muted-foreground"

@@ -10,6 +10,7 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  getNextCustomerCode,
 } from '@/lib/mock-data'
 import type { Customer } from '@/lib/types'
 import {
@@ -26,11 +27,15 @@ import {
   Mail,
   User,
   Check,
+  Car,
+  Camera,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ---------------------------------------------------------------------------
-// CSV helpers (no external dependency)
+// CSV helpers
 // ---------------------------------------------------------------------------
 
 function parseCSVLine(line: string): string[] {
@@ -83,6 +88,11 @@ const CSV_COLUMN_MAP: Record<string, keyof Customer> = {
   担当者: 'contact_person',
   支払条件: 'payment_terms',
   備考: 'notes',
+  車種: 'vehicle_model',
+  年式: 'vehicle_year',
+  初年度登録: 'vehicle_registration_date',
+  車検年月日: 'vehicle_inspection_date',
+  車両番号: 'vehicle_number',
 }
 
 function mapCSVRowToCustomer(
@@ -111,14 +121,64 @@ function customerToCSVRow(c: Customer): string {
     c.contact_person ?? '',
     c.payment_terms ?? '',
     c.notes ?? '',
+    c.vehicle_model ?? '',
+    c.vehicle_year ?? '',
+    c.vehicle_registration_date ?? '',
+    c.vehicle_inspection_date ?? '',
+    c.vehicle_number ?? '',
   ]
   return fields.map((f) => (f.includes(',') || f.includes('"') ? `"${f.replace(/"/g, '""')}"` : f)).join(',')
 }
 
 function generateCSV(customers: Customer[]): string {
-  const header = '顧客コード,顧客名,フリガナ,住所,電話番号,FAX,メール,担当者,支払条件,備考'
+  const header = '顧客コード,顧客名,フリガナ,住所,電話番号,FAX,メール,担当者,支払条件,備考,車種,年式,初年度登録,車検年月日,車両番号'
   const rows = customers.map(customerToCSVRow)
   return [header, ...rows].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// OCR: 車検証からデータを抽出
+// ---------------------------------------------------------------------------
+
+async function ocrVehicleInspection(file: File): Promise<{
+  vehicle_model?: string
+  vehicle_year?: string
+  vehicle_registration_date?: string
+  vehicle_inspection_date?: string
+  vehicle_number?: string
+}> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch('/api/ocr', { method: 'POST', body: formData })
+  if (!res.ok) throw new Error('OCR処理に失敗しました')
+  const { text } = await res.json()
+  if (!text) return {}
+
+  const lines: string[] = text.split('\n').map((l: string) => l.trim()).filter(Boolean)
+  const result: Record<string, string> = {}
+
+  // 車両番号: 例「品川 300 あ 12-34」「岩手 300 あ 1234」
+  const plateMatch = text.match(/([一-龥ぁ-ん]{2,4})\s*(\d{2,3})\s*([あ-ん])\s*([\d・\-]+)/)
+  if (plateMatch) {
+    result.vehicle_number = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${plateMatch[4]}`
+  }
+
+  // 初年度登録: 例「令和3年」「R03」「2021年」
+  const regMatch = text.match(/初年度登録[^\d年]*([令平昭]\s*和?\s*\d+|[12]\d{3})年?/)
+  if (regMatch) result.vehicle_registration_date = regMatch[1]
+
+  // 車検有効期限: 例「令和7年10月」
+  const inspMatch = text.match(/有効期限[^\d年]*([令平昭]\s*和?\s*\d+年\d+月|[12]\d{3}年\d+月)/)
+  if (inspMatch) result.vehicle_inspection_date = inspMatch[1]
+
+  // 車種/型式: 例「アルファード」「プリウス」行を探す
+  const modelLine = lines.find((l) => /型式|車名/.test(l))
+  if (modelLine) {
+    const modelMatch = modelLine.match(/(?:型式|車名)[：:\s]*(.+)/)
+    if (modelMatch) result.vehicle_model = modelMatch[1].trim()
+  }
+
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -136,19 +196,11 @@ type CustomerFormData = {
   contact_person: string
   payment_terms: string
   notes: string
-}
-
-const EMPTY_FORM: CustomerFormData = {
-  customer_code: '',
-  name: '',
-  name_kana: '',
-  address: '',
-  phone: '',
-  fax: '',
-  email: '',
-  contact_person: '',
-  payment_terms: '',
-  notes: '',
+  vehicle_model: string
+  vehicle_year: string
+  vehicle_registration_date: string
+  vehicle_inspection_date: string
+  vehicle_number: string
 }
 
 function customerToForm(c: Customer): CustomerFormData {
@@ -163,6 +215,11 @@ function customerToForm(c: Customer): CustomerFormData {
     contact_person: c.contact_person ?? '',
     payment_terms: c.payment_terms ?? '',
     notes: c.notes ?? '',
+    vehicle_model: c.vehicle_model ?? '',
+    vehicle_year: c.vehicle_year ?? '',
+    vehicle_registration_date: c.vehicle_registration_date ?? '',
+    vehicle_inspection_date: c.vehicle_inspection_date ?? '',
+    vehicle_number: c.vehicle_number ?? '',
   }
 }
 
@@ -176,6 +233,11 @@ interface CustomerDialogProps {
 
 function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDialogProps) {
   const [form, setForm] = useState<CustomerFormData>(initial ?? EMPTY_FORM)
+  const [showVehicle, setShowVehicle] = useState(
+    !!(initial?.vehicle_model || initial?.vehicle_number || initial?.vehicle_inspection_date)
+  )
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const ocrRef = useRef<HTMLInputElement>(null)
 
   const set = (key: keyof CustomerFormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }))
@@ -184,6 +246,31 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
   if (!form.customer_code.trim()) errors.customer_code = '顧客コードは必須です'
   if (!form.name.trim()) errors.name = '顧客名は必須です'
   if (!form.address.trim()) errors.address = '住所は必須です'
+  if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = 'メールアドレスの形式が正しくありません'
+  if (form.phone && !/^[\d\-+() ]+$/.test(form.phone)) errors.phone = '電話番号の形式が正しくありません'
+
+  const handleOCR = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setOcrLoading(true)
+    try {
+      const extracted = await ocrVehicleInspection(file)
+      setForm((prev) => ({
+        ...prev,
+        vehicle_model: extracted.vehicle_model ?? prev.vehicle_model,
+        vehicle_registration_date: extracted.vehicle_registration_date ?? prev.vehicle_registration_date,
+        vehicle_inspection_date: extracted.vehicle_inspection_date ?? prev.vehicle_inspection_date,
+        vehicle_number: extracted.vehicle_number ?? prev.vehicle_number,
+      }))
+      setShowVehicle(true)
+      toast.success('車検証を読み取りました')
+    } catch {
+      toast.error('OCR読み取りに失敗しました')
+    } finally {
+      setOcrLoading(false)
+      if (ocrRef.current) ocrRef.current.value = ''
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -205,7 +292,7 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="cust-code">顧客コード <span className="text-red-500">*</span></Label>
-              <Input id="cust-code" value={form.customer_code} onChange={set('customer_code')} placeholder="C-007" aria-invalid={!!errors.customer_code} />
+              <Input id="cust-code" value={form.customer_code} onChange={set('customer_code')} placeholder="C-001" aria-invalid={!!errors.customer_code} />
               {errors.customer_code && <p className="text-xs text-red-500">{errors.customer_code}</p>}
             </div>
             <div className="space-y-1.5">
@@ -229,7 +316,8 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="cust-phone">電話番号</Label>
-              <Input id="cust-phone" value={form.phone} onChange={set('phone')} placeholder="03-1234-5678" />
+              <Input id="cust-phone" value={form.phone} onChange={set('phone')} placeholder="03-1234-5678" aria-invalid={!!errors.phone} />
+              {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cust-fax">FAX</Label>
@@ -240,7 +328,8 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="cust-email">メール</Label>
-              <Input id="cust-email" type="email" value={form.email} onChange={set('email')} placeholder="info@example.com" />
+              <Input id="cust-email" type="email" value={form.email} onChange={set('email')} placeholder="info@example.com" aria-invalid={!!errors.email} />
+              {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cust-contact">担当者</Label>
@@ -263,6 +352,71 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
               className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none"
               placeholder="メモ・備考"
             />
+          </div>
+
+          {/* 車両情報セクション */}
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowVehicle(!showVehicle)}
+              className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+            >
+              <div className="flex items-center gap-2">
+                <Car className="w-4 h-4 text-gray-500" />
+                車両情報
+              </div>
+              {showVehicle ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+            </button>
+
+            {showVehicle && (
+              <div className="p-4 space-y-3 border-t border-gray-200">
+                {/* OCRボタン */}
+                <div>
+                  <input
+                    ref={ocrRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleOCR}
+                    className="hidden"
+                    id="ocr-upload"
+                  />
+                  <label
+                    htmlFor="ocr-upload"
+                    className={`flex items-center justify-center gap-1.5 w-full h-9 px-3 rounded-md text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 transition-colors cursor-pointer ${ocrLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <Camera className="w-4 h-4" />
+                    {ocrLoading ? 'OCR読み取り中...' : '車検証から写真でインポート'}
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="v-model">車種</Label>
+                    <Input id="v-model" value={form.vehicle_model} onChange={set('vehicle_model')} placeholder="アルファード" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="v-year">年式</Label>
+                    <Input id="v-year" value={form.vehicle_year} onChange={set('vehicle_year')} placeholder="2020" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="v-number">車両番号</Label>
+                  <Input id="v-number" value={form.vehicle_number} onChange={set('vehicle_number')} placeholder="岩手 300 あ 1234" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="v-reg">初年度登録</Label>
+                    <Input id="v-reg" value={form.vehicle_registration_date} onChange={set('vehicle_registration_date')} placeholder="令和3年" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="v-insp">車検年月日</Label>
+                    <Input id="v-insp" value={form.vehicle_inspection_date} onChange={set('vehicle_inspection_date')} placeholder="令和7年10月" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -357,7 +511,7 @@ function CSVImportDialog({ onClose, onImport, importing }: CSVImportDialogProps)
             <Label>CSVファイルを選択</Label>
             <Input ref={fileRef} type="file" accept=".csv" onChange={handleFile} />
             <p className="text-xs text-gray-400">
-              必須列: 顧客コード, 顧客名, 住所 / 任意列: フリガナ, 電話番号, FAX, メール, 担当者, 支払条件, 備考
+              必須列: 顧客コード, 顧客名, 住所 / 任意列: フリガナ, 電話番号, FAX, メール, 担当者, 支払条件, 備考, 車種, 年式, 初年度登録, 車検年月日, 車両番号
             </p>
           </div>
 
@@ -461,14 +615,13 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Dialog states
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addInitialForm, setAddInitialForm] = useState<CustomerFormData | undefined>(undefined)
   const [editTarget, setEditTarget] = useState<Customer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
   const [csvDialogOpen, setCsvDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Load customers on mount
   useEffect(() => {
     getCustomers().then((data) => {
       setCustomers(data)
@@ -476,7 +629,6 @@ export default function CustomersPage() {
     })
   }, [])
 
-  // Filtered customers
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return customers
     const keywords = searchQuery.toLowerCase().split(/\s+/)
@@ -488,6 +640,8 @@ export default function CustomersPage() {
         c.address,
         c.phone ?? '',
         c.contact_person ?? '',
+        c.vehicle_model ?? '',
+        c.vehicle_number ?? '',
       ]
         .join(' ')
         .toLowerCase()
@@ -495,7 +649,16 @@ export default function CustomersPage() {
     })
   }, [customers, searchQuery])
 
-  // Handlers
+  const openAddDialog = useCallback(async () => {
+    try {
+      const nextCode = await getNextCustomerCode()
+      setAddInitialForm({ ...EMPTY_FORM, customer_code: nextCode })
+    } catch {
+      setAddInitialForm(EMPTY_FORM)
+    }
+    setAddDialogOpen(true)
+  }, [])
+
   const handleAdd = useCallback(async (form: CustomerFormData) => {
     setSaving(true)
     try {
@@ -510,6 +673,11 @@ export default function CustomersPage() {
         contact_person: form.contact_person || undefined,
         payment_terms: form.payment_terms || undefined,
         notes: form.notes || undefined,
+        vehicle_model: form.vehicle_model || undefined,
+        vehicle_year: form.vehicle_year || undefined,
+        vehicle_registration_date: form.vehicle_registration_date || undefined,
+        vehicle_inspection_date: form.vehicle_inspection_date || undefined,
+        vehicle_number: form.vehicle_number || undefined,
       })
       setCustomers((prev) => [...prev, created])
       setAddDialogOpen(false)
@@ -537,6 +705,11 @@ export default function CustomersPage() {
           contact_person: form.contact_person || undefined,
           payment_terms: form.payment_terms || undefined,
           notes: form.notes || undefined,
+          vehicle_model: form.vehicle_model || undefined,
+          vehicle_year: form.vehicle_year || undefined,
+          vehicle_registration_date: form.vehicle_registration_date || undefined,
+          vehicle_inspection_date: form.vehicle_inspection_date || undefined,
+          vehicle_number: form.vehicle_number || undefined,
         })
         if (updated) {
           setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
@@ -614,7 +787,7 @@ export default function CustomersPage() {
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">CSVエクスポート</span>
             </Button>
-            <Button onClick={() => setAddDialogOpen(true)} className="gap-1.5">
+            <Button onClick={openAddDialog} className="gap-1.5">
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">顧客追加</span>
             </Button>
@@ -628,7 +801,7 @@ export default function CustomersPage() {
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="顧客名、コード、住所、電話番号で検索..."
+          placeholder="顧客名、コード、住所、電話番号、車種で検索..."
           className="pl-9"
         />
         {searchQuery && (
@@ -667,7 +840,7 @@ export default function CustomersPage() {
           ) : (
             <>
               <p className="text-sm mb-3">顧客が登録されていません</p>
-              <Button onClick={() => setAddDialogOpen(true)} className="gap-1.5">
+              <Button onClick={openAddDialog} className="gap-1.5">
                 <Plus className="w-4 h-4" />
                 最初の顧客を追加
               </Button>
@@ -687,8 +860,8 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">顧客名</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">住所</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">電話番号</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">担当者</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">支払条件</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">車両</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">車検期限</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 w-20"></th>
                 </tr>
               </thead>
@@ -710,8 +883,19 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">{customer.address}</td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{customer.phone ?? '-'}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{customer.contact_person ?? '-'}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">{customer.payment_terms ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {customer.vehicle_model ? (
+                        <div>
+                          <div className="text-xs font-medium">{customer.vehicle_model}</div>
+                          {customer.vehicle_number && (
+                            <div className="text-xs text-gray-400">{customer.vehicle_number}</div>
+                          )}
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
+                      {customer.vehicle_inspection_date ?? '-'}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button
@@ -808,6 +992,12 @@ export default function CustomersPage() {
                     <span className="truncate">{customer.email}</span>
                   </div>
                 )}
+                {customer.vehicle_model && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Car className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <span>{customer.vehicle_model} {customer.vehicle_number && `(${customer.vehicle_number})`}</span>
+                  </div>
+                )}
                 {customer.contact_person && (
                   <div className="flex items-center gap-2 text-gray-600">
                     <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -815,12 +1005,6 @@ export default function CustomersPage() {
                   </div>
                 )}
               </div>
-
-              {customer.payment_terms && (
-                <div className="pt-2 border-t border-gray-100">
-                  <span className="text-xs text-gray-400">{customer.payment_terms}</span>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -830,6 +1014,7 @@ export default function CustomersPage() {
       {addDialogOpen && (
         <CustomerDialog
           title="顧客追加"
+          initial={addInitialForm}
           onClose={() => setAddDialogOpen(false)}
           onSave={handleAdd}
           saving={saving}
@@ -867,4 +1052,22 @@ export default function CustomersPage() {
       )}
     </div>
   )
+}
+
+const EMPTY_FORM: CustomerFormData = {
+  customer_code: '',
+  name: '',
+  name_kana: '',
+  address: '',
+  phone: '',
+  fax: '',
+  email: '',
+  contact_person: '',
+  payment_terms: '',
+  notes: '',
+  vehicle_model: '',
+  vehicle_year: '',
+  vehicle_registration_date: '',
+  vehicle_inspection_date: '',
+  vehicle_number: '',
 }

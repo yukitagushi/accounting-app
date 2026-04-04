@@ -192,6 +192,14 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
     setCustomerName(customer.name)
     setCustomerAddress(customer.address)
     setCustomerCode(customer.customer_code)
+    // 車両情報を自動入力
+    if (customer.vehicle_model || customer.vehicle_number || customer.vehicle_inspection_date) {
+      setShowVehicleInfo(true)
+      if (customer.vehicle_model) setVehicleName(customer.vehicle_model)
+      if (customer.vehicle_number) setVehicleNumber(customer.vehicle_number)
+      if (customer.vehicle_inspection_date) setNextInspectionDate(customer.vehicle_inspection_date)
+      if (customer.vehicle_registration_date) setFirstRegistration(customer.vehicle_registration_date)
+    }
   }
 
   function addLine() {
@@ -485,17 +493,17 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
 
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ minWidth: '720px' }}>
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left pb-2 font-medium text-gray-600 w-[30%]">作業内容・使用部品名</th>
-                <th className="text-center pb-2 font-medium text-gray-600 w-[10%]">区分</th>
-                <th className="text-right pb-2 font-medium text-gray-600 w-[8%]">数量</th>
-                <th className="text-right pb-2 font-medium text-gray-600 w-[14%]">単価</th>
-                <th className="text-right pb-2 font-medium text-gray-600 w-[14%]">部品金額</th>
-                <th className="text-right pb-2 font-medium text-gray-600 w-[14%]">技術料</th>
-                <th className="text-right pb-2 font-medium text-gray-600 w-[6%]">税率</th>
-                <th className="w-[4%]" />
+                <th className="text-left pb-2 font-medium text-gray-600" style={{ minWidth: '200px' }}>作業内容・使用部品名</th>
+                <th className="text-center pb-2 font-medium text-gray-600" style={{ minWidth: '80px' }}>区分</th>
+                <th className="text-right pb-2 font-medium text-gray-600" style={{ minWidth: '70px' }}>数量</th>
+                <th className="text-right pb-2 font-medium text-gray-600" style={{ minWidth: '110px' }}>単価</th>
+                <th className="text-right pb-2 font-medium text-gray-600" style={{ minWidth: '100px' }}>部品金額</th>
+                <th className="text-right pb-2 font-medium text-gray-600" style={{ minWidth: '100px' }}>技術料</th>
+                <th className="text-right pb-2 font-medium text-gray-600" style={{ minWidth: '60px' }}>税率</th>
+                <th style={{ width: '36px' }} />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -509,8 +517,8 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
                   </td>
                   <td className="py-2 pr-2"><Input type="number" min={0} value={line.quantity} onChange={(e) => updateLine(line.id, 'quantity', e.target.value === '' ? '' : Number(e.target.value))} className="h-8 text-sm text-right tabular-nums" /></td>
                   <td className="py-2 pr-2"><CurrencyInput value={line.unit_price} onChange={(v) => updateLine(line.id, 'unit_price', v)} className="h-8 text-sm" /></td>
-                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">{line.parts_amount ? formatCurrency(line.parts_amount) : '-'}</td>
-                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">{line.labor_amount ? formatCurrency(line.labor_amount) : '-'}</td>
+                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs whitespace-nowrap">{line.parts_amount ? formatCurrency(line.parts_amount) : '-'}</td>
+                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs whitespace-nowrap">{line.labor_amount ? formatCurrency(line.labor_amount) : '-'}</td>
                   <td className="py-2 pr-2">
                     <select value={line.tax_rate} onChange={(e) => updateLine(line.id, 'tax_rate', Number(e.target.value))} className="w-full h-8 rounded-md border border-input bg-background px-1 text-sm text-right">
                       <option value={0}>0%</option><option value={0.08}>8%</option><option value={0.1}>10%</option>

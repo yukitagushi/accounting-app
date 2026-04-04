@@ -12,6 +12,12 @@ export type Customer = {
   contact_person?: string
   payment_terms?: string
   notes?: string
+  // 車両情報
+  vehicle_model?: string
+  vehicle_year?: string
+  vehicle_registration_date?: string
+  vehicle_inspection_date?: string
+  vehicle_number?: string
   created_at: string
   updated_at: string
 }

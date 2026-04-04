@@ -1,6 +1,6 @@
 'use client'
 
-import { Building2, Check, ChevronsUpDown } from 'lucide-react'
+import { Building2, Check, ChevronsUpDown, Layers } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,18 +13,18 @@ import { cn } from '@/lib/utils'
 import { useBranchStore } from '@/hooks/use-branch'
 import type { Branch } from '@/lib/types'
 
-// Demo branches for display
-const DEMO_BRANCHES: Branch[] = [
-  { id: '1', name: '本社', code: 'HQ', created_at: '' },
-  { id: '2', name: '新宿支店', code: 'SJK', created_at: '' },
-  { id: '3', name: '渋谷支店', code: 'SBY', created_at: '' },
+// 拠点一覧（トータルは id='all' の特殊エントリ）
+export const APP_BRANCHES: Branch[] = [
+  { id: 'all', name: 'トータル', code: 'ALL', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000001', name: '滝沢工場', code: 'TKZ', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000002', name: '三ツ割工場', code: 'MTW', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000003', name: '本社工場', code: 'HQ', created_at: '' },
 ]
 
 export function BranchSelector() {
-  const { currentBranch, branches, setCurrentBranch } = useBranchStore()
+  const { currentBranch, setCurrentBranch } = useBranchStore()
 
-  const displayBranches = branches.length > 0 ? branches : DEMO_BRANCHES
-  const activeBranch = currentBranch ?? DEMO_BRANCHES[0]
+  const activeBranch = currentBranch ?? APP_BRANCHES[0]
 
   return (
     <DropdownMenu>
@@ -32,7 +32,11 @@ export function BranchSelector() {
         className="flex w-full items-center justify-between h-9 px-3 rounded-lg text-sm font-medium border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+          {activeBranch.id === 'all' ? (
+            <Layers className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+          ) : (
+            <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+          )}
           <span className="truncate">{activeBranch.name}</span>
         </div>
         <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1" />
@@ -43,7 +47,7 @@ export function BranchSelector() {
           拠点を選択
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {displayBranches.map((branch) => (
+        {APP_BRANCHES.map((branch) => (
           <DropdownMenuItem
             key={branch.id}
             onClick={() => setCurrentBranch(branch)}
@@ -53,7 +57,11 @@ export function BranchSelector() {
             )}
           >
             <div className="flex items-center gap-2">
-              <Building2 className="w-3.5 h-3.5 opacity-60" />
+              {branch.id === 'all' ? (
+                <Layers className="w-3.5 h-3.5 opacity-60" />
+              ) : (
+                <Building2 className="w-3.5 h-3.5 opacity-60" />
+              )}
               <span className="text-sm">{branch.name}</span>
             </div>
             {activeBranch.id === branch.id && (

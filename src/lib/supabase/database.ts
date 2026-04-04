@@ -47,6 +47,11 @@ export async function createCustomer(input: Partial<Customer>): Promise<Customer
     contact_person: input.contact_person,
     payment_terms: input.payment_terms,
     notes: input.notes ?? '',
+    vehicle_model: input.vehicle_model,
+    vehicle_year: input.vehicle_year,
+    vehicle_registration_date: input.vehicle_registration_date,
+    vehicle_inspection_date: input.vehicle_inspection_date,
+    vehicle_number: input.vehicle_number,
   }).select().single()
   if (error) throw error
   return data
@@ -60,6 +65,21 @@ export async function updateCustomer(id: string, input: Partial<Customer>): Prom
 export async function deleteCustomer(id: string): Promise<boolean> {
   const { error } = await db().from('customers').delete().eq('id', id)
   return !error
+}
+
+export async function getNextCustomerCode(): Promise<string> {
+  const { data } = await db()
+    .from('customers')
+    .select('customer_code')
+    .order('customer_code', { ascending: false })
+    .limit(1)
+  if (!data || data.length === 0) return 'C-001'
+  const last = data[0].customer_code ?? ''
+  const match = last.match(/(\d+)$/)
+  if (!match) return 'C-001'
+  const next = parseInt(match[1], 10) + 1
+  const prefix = last.slice(0, last.length - match[1].length)
+  return `${prefix}${String(next).padStart(match[1].length, '0')}`
 }
 
 // ── Accounts ─────────────────────────────────────────────────────────────────
@@ -321,10 +341,28 @@ export async function updateInvoice(id: string, input: Partial<Invoice> & { line
 
 export async function searchInvoices(keyword: string): Promise<Invoice[]> {
   if (!keyword.trim()) return []
-  const { data } = await db().from('invoices').select('*, line_items:invoice_line_items(*)').or(
-    `customer_name.ilike.%${keyword}%,invoice_number.ilike.%${keyword}%,notes.ilike.%${keyword}%`
-  ).order('issue_date', { ascending: false })
-  return (data ?? []) as Invoice[]
+  // スペース区切りでAND検索
+  const terms = keyword.trim().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return []
+
+  // 全件取得してクライアント側でANDフィルタリング（Supabase の or は複数term AND に対応しにくいため）
+  const { data } = await db()
+    .from('invoices')
+    .select('*, line_items:invoice_line_items(*)')
+    .order('issue_date', { ascending: false })
+  const all = (data ?? []) as Invoice[]
+
+  return all.filter((inv) => {
+    const searchTarget = [
+      inv.customer_name,
+      inv.invoice_number,
+      inv.notes,
+      inv.vehicle_name ?? '',
+      inv.vehicle_number ?? '',
+      ...(inv.line_items ?? []).map((li) => li.description),
+    ].join(' ').toLowerCase()
+    return terms.every((t) => searchTarget.includes(t.toLowerCase()))
+  })
 }
 
 // ── Vehicle Inspections ──────────────────────────────────────────────────────

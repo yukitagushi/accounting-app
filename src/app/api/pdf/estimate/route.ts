@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer, Document } from '@react-pdf/renderer'
 import { EstimatePDF } from '@/lib/pdf/estimate-template'
-import { MOCK_ESTIMATES } from '@/lib/mock-data'
+import { getEstimate } from '@/lib/supabase/database'
+import { createClient } from '@/lib/supabase/server'
 import React from 'react'
 
 export async function GET(request: NextRequest) {
@@ -12,7 +13,14 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Missing id parameter', { status: 400 })
   }
 
-  const estimate = MOCK_ESTIMATES.find((e) => e.id === id)
+  // Auth check
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  const estimate = await getEstimate(id)
 
   if (!estimate) {
     return new NextResponse('Estimate not found', { status: 404 })

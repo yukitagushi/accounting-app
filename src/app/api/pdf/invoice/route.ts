@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer, Document } from '@react-pdf/renderer'
 import { InvoicePDF } from '@/lib/pdf/invoice-template'
-import { MOCK_INVOICES } from '@/lib/mock-data'
+import { getInvoice } from '@/lib/supabase/database'
+import { createClient } from '@/lib/supabase/server'
 import React from 'react'
 
 export async function GET(request: NextRequest) {
@@ -12,7 +13,14 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Missing id parameter', { status: 400 })
   }
 
-  const invoice = MOCK_INVOICES.find((i) => i.id === id)
+  // Auth check
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  const invoice = await getInvoice(id)
 
   if (!invoice) {
     return new NextResponse('Invoice not found', { status: 404 })

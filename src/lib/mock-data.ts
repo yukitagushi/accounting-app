@@ -16,6 +16,7 @@ export const searchCustomers = supabase.searchCustomers
 export const createCustomer = supabase.createCustomer
 export const updateCustomer = supabase.updateCustomer
 export const deleteCustomer = supabase.deleteCustomer
+export const getNextCustomerCode = supabase.getNextCustomerCode
 
 export const getAccounts = supabase.getAccounts
 export const getJournalEntries = supabase.getJournalEntries
@@ -78,7 +79,10 @@ export async function convertEstimateToInvoice(estimateId: string): Promise<Invo
 // ── Static data (for dashboard, trial balance, etc.) ────────────────────────
 
 export const MOCK_BRANCHES: Branch[] = [
-  { id: '00000000-0000-0000-0000-000000000001', name: '本店', code: 'HQ', address: '〒028-0041 岩手県久慈市長内町', phone: '0194-52-3955', created_at: '2024-01-01T00:00:00Z' },
+  { id: 'all', name: 'トータル', code: 'ALL', created_at: '2024-01-01T00:00:00Z' },
+  { id: '00000000-0000-0000-0000-000000000001', name: '滝沢工場', code: 'TKZ', address: '〒020-0173 岩手県岩手郡滝沢市', phone: '019-684-0000', created_at: '2024-01-01T00:00:00Z' },
+  { id: '00000000-0000-0000-0000-000000000002', name: '三ツ割工場', code: 'MTW', address: '〒028-0000 岩手県', phone: '019-684-0001', created_at: '2024-01-01T00:00:00Z' },
+  { id: '00000000-0000-0000-0000-000000000003', name: '本社工場', code: 'HQ', address: '〒028-0041 岩手県久慈市長内町', phone: '0194-52-3955', created_at: '2024-01-01T00:00:00Z' },
 ]
 
 export const MOCK_CURRENT_USER: Profile = {
@@ -103,7 +107,7 @@ export const MOCK_ACCOUNTS: Account[] = DEFAULT_ACCOUNTS.map((a, i) => ({
 // Sync helper for components that need sync access
 export function getMockAccounts(): Account[] { return MOCK_ACCOUNTS }
 
-export async function getBranches(): Promise<Branch[]> { return MOCK_BRANCHES }
+export async function getBranches(): Promise<Branch[]> { return MOCK_BRANCHES.filter(b => b.id !== 'all') }
 
 // Synchronous helpers used by dashboard, trial balance, etc.
 export function getMockVehicleInspections(): VehicleInspection[] { return [] }

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { Plus, Camera } from 'lucide-react'
 import { Button } from '@/components/ui/button'

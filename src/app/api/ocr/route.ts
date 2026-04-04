@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+// File size limit: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024
+// Allowed image types
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 
 export async function POST(request: NextRequest) {
+  // Auth check
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const secret = process.env.CONVERTAPI_SECRET
   if (!secret) {
     return NextResponse.json({ error: 'CONVERTAPI_SECRET is not configured' }, { status: 500 })
@@ -13,12 +26,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: 'Invalid file type. Only images are allowed.' }, { status: 400 })
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 })
+    }
+
     // Determine source format from file type
     const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-    const sourceFormat = ext === 'png' ? 'jpg' : ext === 'heic' ? 'jpg' : ext === 'webp' ? 'jpg' : 'jpg'
 
     // Convert image to JPG first if not already JPG, then OCR
-    // ConvertAPI supports jpg -> txt for OCR
     const arrayBuffer = await file.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
 
@@ -63,6 +84,9 @@ export async function POST(request: NextRequest) {
         }),
       }
     )
+
+    // 画像データはメモリから解放（GCに委ねる）
+    // jpgBase64 と base64 はこれ以降使わない
 
     if (!ocrRes.ok) {
       const errText = await ocrRes.text()
