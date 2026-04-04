@@ -135,7 +135,7 @@ function generateCSV(customers: Customer[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// OCR: 車検証からデータを抽出
+// OCR: 車検証からデータを抽出（GPT-4o Vision API使用）
 // ---------------------------------------------------------------------------
 
 async function ocrVehicleInspection(file: File): Promise<{
@@ -146,7 +146,23 @@ async function ocrVehicleInspection(file: File): Promise<{
 }> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch('/api/ocr', { method: 'POST', body: formData })
+
+  // まずVision APIを試みる
+  const visionRes = await fetch('/api/ocr-vision', { method: 'POST', body: formData })
+  if (visionRes.ok) {
+    const data = await visionRes.json()
+    const result: Record<string, string> = {}
+    if (data.vehicle_number) result.vehicle_number = data.vehicle_number
+    if (data.vehicle_model) result.vehicle_model = data.vehicle_model
+    if (data.vehicle_year) result.vehicle_year = data.vehicle_year
+    if (data.vehicle_inspection_date) result.vehicle_inspection_date = data.vehicle_inspection_date
+    return result
+  }
+
+  // Vision APIが使えない場合はConvertAPI OCR + 正規表現にフォールバック
+  const ocrFormData = new FormData()
+  ocrFormData.append('file', file)
+  const res = await fetch('/api/ocr', { method: 'POST', body: ocrFormData })
   if (!res.ok) throw new Error('OCR処理に失敗しました')
   const { text } = await res.json()
   if (!text) return {}
@@ -160,15 +176,15 @@ async function ocrVehicleInspection(file: File): Promise<{
     result.vehicle_number = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${plateMatch[4]}`
   }
 
-  // 年式: 初度登録年月から年を抽出 (例「令和3年5月」→「令和3年」「2021年」)
+  // 年式: 初度登録年月から年を抽出
   const yearMatch = text.match(/初度登録年月[^\d年]*([令平昭]\s*和?\s*\d+|[12]\d{3})/)
   if (yearMatch) result.vehicle_year = yearMatch[1]
 
-  // 車検有効期限: 車検証は「有効期間の満了する日」と記載
+  // 車検有効期限
   const inspMatch = text.match(/(?:有効期間の満了する日|有効期限)[^\d年]*([令平昭]\s*和?\s*\d+年\d+月|[12]\d{3}年\d+月)/)
   if (inspMatch) result.vehicle_inspection_date = inspMatch[1]
 
-  // 車種/型式: 例「アルファード」「プリウス」行を探す
+  // 車種/型式
   const modelLine = lines.find((l) => /型式|車名/.test(l))
   if (modelLine) {
     const modelMatch = modelLine.match(/(?:型式|車名)[：:\s]*(.+)/)
@@ -253,6 +269,7 @@ function CustomerDialog({ title, initial, onClose, onSave, saving }: CustomerDia
       setForm((prev) => ({
         ...prev,
         vehicle_model: extracted.vehicle_model ?? prev.vehicle_model,
+        vehicle_year: extracted.vehicle_year ?? prev.vehicle_year,
         vehicle_inspection_date: extracted.vehicle_inspection_date ?? prev.vehicle_inspection_date,
         vehicle_number: extracted.vehicle_number ?? prev.vehicle_number,
       }))
