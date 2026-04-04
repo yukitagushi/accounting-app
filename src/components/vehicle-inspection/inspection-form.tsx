@@ -2,14 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { CurrencyInput } from '@/components/shared/currency-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { VEHICLE_INSPECTION_ITEMS } from '@/lib/constants'
+import { createJournalEntry, createVehicleInspection, updateVehicleInspection } from '@/lib/mock-data'
 import type { VehicleInspection, VehicleInspectionStatus } from '@/lib/types'
-import { CheckCircle, Circle, Clock, Car, ChevronRight } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Car, ChevronRight, BookOpen } from 'lucide-react'
+import { toast } from 'sonner'
 
 type ItemKey = typeof VEHICLE_INSPECTION_ITEMS[number]['key']
 
@@ -91,12 +94,228 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (!isValid) return
     setSaving(true)
-    setTimeout(() => {
-      setSaving(false)
+    try {
+      const payload: Partial<VehicleInspection> = {
+        customer_name: customerName,
+        vehicle_number: vehicleNumber,
+        inspection_date: inspectionDate,
+        status,
+        total_deposit: totalDeposit,
+        total_actual: totalActual,
+        difference: totalDiff,
+      }
+      // Add all amount fields
+      for (const item of VEHICLE_INSPECTION_ITEMS) {
+        const dk = `deposit_${item.key}` as keyof VehicleInspection
+        const ak = `actual_${item.key}` as keyof VehicleInspection
+        ;(payload as Record<string, unknown>)[dk] = numVal(amounts[`deposit_${item.key}` as keyof AmountFields])
+        ;(payload as Record<string, unknown>)[ak] = numVal(amounts[`actual_${item.key}` as keyof AmountFields])
+      }
+
+      if (mode === 'edit' && initialData) {
+        await updateVehicleInspection(initialData.id, payload)
+        toast.success('車検情報を更新しました')
+      } else {
+        await createVehicleInspection(payload)
+        toast.success('車検情報を登録しました')
+      }
       router.push('/vehicle-inspection')
-    }, 600)
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const [generatingJournal, setGeneratingJournal] = useState(false)
+
+  async function handleGenerateJournal() {
+    if (!initialData) return
+    setGeneratingJournal(true)
+    try {
+      // Account code mapping for each item
+      const depositAccountMap: Record<string, { code: string; name: string }> = {
+        jibaiseki: { code: '2220', name: '自賠責保険預り金' },
+        weight_tax: { code: '2230', name: '重量税預り金' },
+        stamp: { code: '2240', name: '印紙代預り金' },
+        maintenance: { code: '2210', name: '車検預り金' },
+        parts: { code: '2210', name: '車検預り金' },
+        substitute_car: { code: '2210', name: '車検預り金' },
+        other: { code: '2210', name: '車検預り金' },
+      }
+
+      const expenseAccountMap: Record<string, { code: string; name: string }> = {
+        jibaiseki: { code: '6700', name: '保険料' },
+        weight_tax: { code: '6800', name: '租税公課' },
+        stamp: { code: '6800', name: '租税公課' },
+        maintenance: { code: '4200', name: '車検売上' },
+        parts: { code: '5100', name: '部品仕入' },
+        substitute_car: { code: '7000', name: '雑費' },
+        other: { code: '7000', name: '雑費' },
+      }
+
+      const lines: Array<{
+        account_id: string
+        debit_amount: number
+        credit_amount: number
+        description: string
+        line_order: number
+      }> = []
+
+      let lineOrder = 1
+
+      // For each inspection item, create journal lines
+      for (const item of VEHICLE_INSPECTION_ITEMS) {
+        const deposit = numVal(amounts[`deposit_${item.key}` as keyof AmountFields])
+        const actual = numVal(amounts[`actual_${item.key}` as keyof AmountFields])
+
+        if (deposit === 0 && actual === 0) continue
+
+        const depositAcct = depositAccountMap[item.key]
+        const expenseAcct = expenseAccountMap[item.key]
+
+        // Debit: 預り金 (clear the liability) / or expense account
+        if (actual > 0) {
+          // For pass-through costs (自賠責, 重量税, 印紙代): debit the deposit account
+          if (['jibaiseki', 'weight_tax', 'stamp'].includes(item.key)) {
+            lines.push({
+              account_id: depositAcct.code,
+              debit_amount: actual,
+              credit_amount: 0,
+              description: `${item.label}（実費）`,
+              line_order: lineOrder++,
+            })
+          } else {
+            // For service items (maintenance, parts): debit expense
+            lines.push({
+              account_id: expenseAcct.code,
+              debit_amount: actual,
+              credit_amount: 0,
+              description: `${item.label}（実費）`,
+              line_order: lineOrder++,
+            })
+          }
+        }
+
+        // Credit: 現金/普通預金 for actual payment
+        if (actual > 0) {
+          lines.push({
+            account_id: '1000',
+            debit_amount: 0,
+            credit_amount: actual,
+            description: `${item.label}（支払）`,
+            line_order: lineOrder++,
+          })
+        }
+      }
+
+      // Also create deposit receipt entry
+      // Debit: 現金, Credit: 各預り金
+      if (totalDeposit > 0) {
+        // Group deposits by account
+        const depositGroups: Record<string, { name: string; amount: number }> = {}
+        for (const item of VEHICLE_INSPECTION_ITEMS) {
+          const deposit = numVal(amounts[`deposit_${item.key}` as keyof AmountFields])
+          if (deposit === 0) continue
+          const acct = depositAccountMap[item.key]
+          if (!depositGroups[acct.code]) {
+            depositGroups[acct.code] = { name: acct.name, amount: 0 }
+          }
+          depositGroups[acct.code].amount += deposit
+        }
+
+        lines.unshift({
+          account_id: '1000',
+          debit_amount: totalDeposit,
+          credit_amount: 0,
+          description: '車検預り金受領',
+          line_order: 0,
+        })
+
+        let depositLineOrder = 0.5
+        for (const [code, { name, amount }] of Object.entries(depositGroups)) {
+          lines.push({
+            account_id: code,
+            debit_amount: 0,
+            credit_amount: amount,
+            description: `${name}受領`,
+            line_order: depositLineOrder++,
+          })
+        }
+      }
+
+      // Handle difference (settlement)
+      if (totalDiff !== 0) {
+        if (totalDiff > 0) {
+          // Deposit > Actual: refund to customer
+          lines.push({
+            account_id: '2210',
+            debit_amount: totalDiff,
+            credit_amount: 0,
+            description: '車検預り金精算（返金）',
+            line_order: lineOrder++,
+          })
+          lines.push({
+            account_id: '1000',
+            debit_amount: 0,
+            credit_amount: totalDiff,
+            description: '車検預り金精算（返金）',
+            line_order: lineOrder++,
+          })
+        } else {
+          // Actual > Deposit: additional charge to customer
+          lines.push({
+            account_id: '1000',
+            debit_amount: Math.abs(totalDiff),
+            credit_amount: 0,
+            description: '車検追加請求',
+            line_order: lineOrder++,
+          })
+          lines.push({
+            account_id: '2210',
+            debit_amount: 0,
+            credit_amount: Math.abs(totalDiff),
+            description: '車検追加請求',
+            line_order: lineOrder++,
+          })
+        }
+      }
+
+      // Re-number line orders
+      lines.sort((a, b) => a.line_order - b.line_order)
+      lines.forEach((l, i) => { l.line_order = i + 1 })
+
+      const entry = await createJournalEntry({
+        entry_date: inspectionDate || new Date().toISOString().slice(0, 10),
+        description: `車検仕訳 ${customerName} ${vehicleNumber}`,
+        entry_type: 'vehicle_inspection',
+        status: 'draft',
+        lines: lines.map((l, i) => ({
+          id: `vi-je-${Date.now()}-${i}`,
+          journal_entry_id: '',
+          account_id: l.account_id,
+          debit_amount: l.debit_amount,
+          credit_amount: l.credit_amount,
+          description: l.description,
+          line_order: l.line_order,
+        })),
+      })
+
+      // Link journal entry to inspection
+      if (initialData) {
+        await updateVehicleInspection(initialData.id, { journal_entry_id: entry.id })
+      }
+
+      toast.success('仕訳を自動作成しました')
+      router.push(`/journal/${entry.id}`)
+    } catch {
+      toast.error('仕訳の作成に失敗しました')
+    } finally {
+      setGeneratingJournal(false)
+    }
   }
 
   const errors: Record<string, string> = {}
@@ -359,6 +578,25 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
               {STATUS_ORDER[currentStatusIdx + 1] === 'completed' ? '完了にする' : STATUS_ORDER[currentStatusIdx + 1] === 'settled' ? '精算する' : '次のステータスへ'}
               <ChevronRight className="w-4 h-4" />
             </Button>
+          )}
+          {(status === 'completed' || status === 'settled') && !initialData?.journal_entry_id && (
+            <Button
+              variant="outline"
+              onClick={handleGenerateJournal}
+              disabled={generatingJournal || !isValid}
+              className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            >
+              <BookOpen className="w-4 h-4" />
+              {generatingJournal ? '仕訳作成中...' : '仕訳を自動作成'}
+            </Button>
+          )}
+          {initialData?.journal_entry_id && (
+            <Link href={`/journal/${initialData.journal_entry_id}`}>
+              <Button variant="outline" className="gap-1.5 border-green-200 text-green-700 hover:bg-green-50">
+                <BookOpen className="w-4 h-4" />
+                仕訳を確認
+              </Button>
+            </Link>
           )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">

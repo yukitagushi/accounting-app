@@ -1235,6 +1235,50 @@ export async function getVehicleInspections(branchId?: string): Promise<VehicleI
   return MOCK_VEHICLE_INSPECTIONS.filter((v) => v.branch_id === branchId)
 }
 
+export async function createVehicleInspection(data: Partial<VehicleInspection>): Promise<VehicleInspection> {
+  await delay(500)
+  const now = new Date().toISOString()
+  const num = String(MOCK_VEHICLE_INSPECTIONS.length + 1).padStart(3, '0')
+  const newInspection: VehicleInspection = {
+    id: `vi-${num}`,
+    branch_id: data.branch_id ?? 'branch-1',
+    customer_name: data.customer_name ?? '',
+    vehicle_number: data.vehicle_number ?? '',
+    inspection_date: data.inspection_date ?? now.slice(0, 10),
+    status: data.status ?? 'pending',
+    deposit_jibaiseki: data.deposit_jibaiseki ?? 0,
+    deposit_weight_tax: data.deposit_weight_tax ?? 0,
+    deposit_stamp: data.deposit_stamp ?? 0,
+    deposit_maintenance: data.deposit_maintenance ?? 0,
+    deposit_parts: data.deposit_parts ?? 0,
+    deposit_substitute_car: data.deposit_substitute_car ?? 0,
+    deposit_other: data.deposit_other ?? 0,
+    actual_jibaiseki: data.actual_jibaiseki ?? 0,
+    actual_weight_tax: data.actual_weight_tax ?? 0,
+    actual_stamp: data.actual_stamp ?? 0,
+    actual_maintenance: data.actual_maintenance ?? 0,
+    actual_parts: data.actual_parts ?? 0,
+    actual_substitute_car: data.actual_substitute_car ?? 0,
+    actual_other: data.actual_other ?? 0,
+    total_deposit: data.total_deposit ?? 0,
+    total_actual: data.total_actual ?? 0,
+    difference: data.difference ?? 0,
+    journal_entry_id: data.journal_entry_id,
+    created_at: now,
+  }
+  MOCK_VEHICLE_INSPECTIONS.push(newInspection)
+  return newInspection
+}
+
+export async function updateVehicleInspection(id: string, data: Partial<VehicleInspection>): Promise<VehicleInspection | null> {
+  await delay(500)
+  const idx = MOCK_VEHICLE_INSPECTIONS.findIndex((v) => v.id === id)
+  if (idx === -1) return null
+  const updated = { ...MOCK_VEHICLE_INSPECTIONS[idx], ...data }
+  MOCK_VEHICLE_INSPECTIONS[idx] = updated
+  return updated
+}
+
 export async function getEstimates(branchId?: string): Promise<Estimate[]> {
   await delay()
   if (!branchId) return [...MOCK_ESTIMATES]
