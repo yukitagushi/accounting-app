@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Search, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,7 @@ function AccountPopover({ accounts, value, onChange, placeholder = '勘定科目
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [recentIds, setRecentIds] = useState<string[]>([])
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -60,6 +62,17 @@ function AccountPopover({ accounts, value, onChange, placeholder = '勘定科目
 
   useEffect(() => {
     if (!open) return
+    // ボタンの位置を取得してドロップダウンを配置
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: 288,
+        zIndex: 9999,
+      })
+    }
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
@@ -134,8 +147,11 @@ function AccountPopover({ accounts, value, onChange, placeholder = '勘定科目
         <ChevronDown className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-72 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          style={dropdownStyle}
+          className="rounded-xl border border-border bg-popover shadow-lg overflow-hidden"
+        >
           {/* Search */}
           <div className="p-2 border-b border-border">
             <div className="relative">
@@ -185,7 +201,8 @@ function AccountPopover({ accounts, value, onChange, placeholder = '勘定科目
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
