@@ -197,7 +197,7 @@ function DesktopLineRow({
           size="icon-sm"
           onClick={() => onRemove(line.id)}
           disabled={!canRemove}
-          className="opacity-0 group-hover/row:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         >
           <Trash2 className="size-3.5" />
         </Button>
