@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getMockAccounts } from '@/lib/mock-data'
+import { getAccounts } from '@/lib/mock-data'
 import { ACCOUNT_CATEGORIES } from '@/lib/constants'
 import type { Account, AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -132,10 +132,14 @@ function AccountDialog({ title, account, onClose, onSave }: AccountDialogProps) 
 }
 
 export default function AccountsPage() {
-  const [accounts, setAccounts] = useState<Account[]>(getMockAccounts())
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [collapsed, setCollapsed] = useState<Set<AccountCategory>>(new Set())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<Account | null>(null)
+
+  useEffect(() => {
+    getAccounts().then(setAccounts)
+  }, [])
 
   const grouped = useMemo(() => {
     const map = {} as Record<AccountCategory, Account[]>
