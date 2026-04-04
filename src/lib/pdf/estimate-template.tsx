@@ -1,25 +1,28 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { Estimate } from '@/lib/types'
+import { registerJapaneseFonts } from './register-fonts'
+
+registerJapaneseFonts()
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 8, paddingTop: 20, paddingBottom: 20, paddingHorizontal: 25, backgroundColor: '#fff', color: '#1a1a1a' },
-  title: { textAlign: 'center', fontSize: 18, fontFamily: 'Helvetica-Bold', letterSpacing: 6, marginBottom: 10 },
+  page: { fontFamily: 'NotoSansJP', fontSize: 8, paddingTop: 20, paddingBottom: 20, paddingHorizontal: 25, backgroundColor: '#fff', color: '#1a1a1a' },
+  title: { textAlign: 'center', fontSize: 18, fontWeight: 700, letterSpacing: 6, marginBottom: 10 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   customerBlock: { flex: 1, maxWidth: '55%' },
-  customerName: { fontSize: 12, fontFamily: 'Helvetica-Bold', borderBottomWidth: 2, borderBottomColor: '#1a1a1a', paddingBottom: 2, marginBottom: 3 },
+  customerName: { fontSize: 12, fontWeight: 700, borderBottomWidth: 2, borderBottomColor: '#1a1a1a', paddingBottom: 2, marginBottom: 3 },
   customerDetail: { fontSize: 7, color: '#555', marginBottom: 1 },
   companyBlock: { alignItems: 'flex-end', maxWidth: '42%' },
-  companyName: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  companyName: { fontSize: 10, fontWeight: 700, marginBottom: 2 },
   companyDetail: { fontSize: 7, color: '#333', marginBottom: 1 },
   stampCircle: { width: 36, height: 36, borderWidth: 2, borderColor: '#cc0000', borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  stampText: { fontSize: 10, color: '#cc0000', fontFamily: 'Helvetica-Bold' },
+  stampText: { fontSize: 10, color: '#cc0000', fontWeight: 700 },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, fontSize: 7 },
   vehicleTable: { marginBottom: 6 },
   vehicleRow: { flexDirection: 'row' },
-  vehicleHeaderCell: { backgroundColor: '#e8e8e8', borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 6.5, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
+  vehicleHeaderCell: { backgroundColor: '#e8e8e8', borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 6.5, fontWeight: 700, textAlign: 'center' },
   vehicleValueCell: { borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 6.5, textAlign: 'center' },
   tableHeader: { flexDirection: 'row', backgroundColor: '#e8e8e8' },
-  tableHeaderCell: { borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 6.5, fontFamily: 'Helvetica-Bold' },
+  tableHeaderCell: { borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 6.5, fontWeight: 700 },
   tableRow: { flexDirection: 'row' },
   tableCell: { borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 7 },
   colDesc: { width: '36%' },
@@ -33,10 +36,10 @@ const s = StyleSheet.create({
   bottomLeft: { maxWidth: '45%', fontSize: 6.5 },
   bottomRight: { width: '48%' },
   totalsRow: { flexDirection: 'row' },
-  totalsLabel: { borderWidth: 0.5, borderColor: '#333', backgroundColor: '#e8e8e8', padding: 2, fontSize: 7, fontFamily: 'Helvetica-Bold', textAlign: 'center', width: '40%' },
+  totalsLabel: { borderWidth: 0.5, borderColor: '#333', backgroundColor: '#e8e8e8', padding: 2, fontSize: 7, fontWeight: 700, textAlign: 'center', width: '40%' },
   totalsValue: { borderWidth: 0.5, borderColor: '#333', padding: 2, fontSize: 7, textAlign: 'right', width: '60%' },
-  grandTotalLabel: { borderWidth: 1.5, borderColor: '#333', backgroundColor: '#fef3c7', padding: 3, fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'center', width: '40%' },
-  grandTotalValue: { borderWidth: 1.5, borderColor: '#333', backgroundColor: '#fef3c7', padding: 3, fontSize: 11, fontFamily: 'Helvetica-Bold', textAlign: 'right', color: '#1d3a8a', width: '60%' },
+  grandTotalLabel: { borderWidth: 1.5, borderColor: '#333', backgroundColor: '#fef3c7', padding: 3, fontSize: 9, fontWeight: 700, textAlign: 'center', width: '40%' },
+  grandTotalValue: { borderWidth: 1.5, borderColor: '#333', backgroundColor: '#fef3c7', padding: 3, fontSize: 11, fontWeight: 700, textAlign: 'right', color: '#1d3a8a', width: '60%' },
 })
 
 function fmt(val: number): string {
