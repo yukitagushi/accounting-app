@@ -484,7 +484,8 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">明細</h2>
 
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
@@ -501,74 +502,72 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
             <tbody className="divide-y divide-gray-100">
               {lineItems.map((line) => (
                 <tr key={line.id}>
+                  <td className="py-2 pr-2"><Input value={line.description} onChange={(e) => updateLine(line.id, 'description', e.target.value)} placeholder="品名・作業内容" className="h-8 text-sm" /></td>
                   <td className="py-2 pr-2">
-                    <Input
-                      value={line.description}
-                      onChange={(e) => updateLine(line.id, 'description', e.target.value)}
-                      placeholder="品名・作業内容"
-                      className="h-8 text-sm"
-                    />
-                  </td>
-                  <td className="py-2 pr-2">
-                    <select
-                      value={line.category}
-                      onChange={(e) => updateLine(line.id, 'category', e.target.value)}
-                      className="w-full h-8 rounded-md border border-input bg-background px-1 text-sm text-center"
-                    >
-                      <option value="部品">部品</option>
-                      <option value="技術">技術</option>
-                      <option value="その他">その他</option>
+                    <select value={line.category} onChange={(e) => updateLine(line.id, 'category', e.target.value)} className="w-full h-8 rounded-md border border-input bg-background px-1 text-sm text-center">
+                      <option value="部品">部品</option><option value="技術">技術</option><option value="その他">その他</option>
                     </select>
                   </td>
+                  <td className="py-2 pr-2"><Input type="number" min={0} value={line.quantity} onChange={(e) => updateLine(line.id, 'quantity', e.target.value === '' ? '' : Number(e.target.value))} className="h-8 text-sm text-right tabular-nums" /></td>
+                  <td className="py-2 pr-2"><CurrencyInput value={line.unit_price} onChange={(v) => updateLine(line.id, 'unit_price', v)} className="h-8 text-sm" /></td>
+                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">{line.parts_amount ? formatCurrency(line.parts_amount) : '-'}</td>
+                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">{line.labor_amount ? formatCurrency(line.labor_amount) : '-'}</td>
                   <td className="py-2 pr-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={line.quantity}
-                      onChange={(e) =>
-                        updateLine(line.id, 'quantity', e.target.value === '' ? '' : Number(e.target.value))
-                      }
-                      className="h-8 text-sm text-right tabular-nums"
-                    />
-                  </td>
-                  <td className="py-2 pr-2">
-                    <CurrencyInput
-                      value={line.unit_price}
-                      onChange={(v) => updateLine(line.id, 'unit_price', v)}
-                      className="h-8 text-sm"
-                    />
-                  </td>
-                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">
-                    {line.parts_amount ? formatCurrency(line.parts_amount) : '-'}
-                  </td>
-                  <td className="py-2 pr-2 text-right tabular-nums text-gray-700 text-xs">
-                    {line.labor_amount ? formatCurrency(line.labor_amount) : '-'}
-                  </td>
-                  <td className="py-2 pr-2">
-                    <select
-                      value={line.tax_rate}
-                      onChange={(e) => updateLine(line.id, 'tax_rate', Number(e.target.value))}
-                      className="w-full h-8 rounded-md border border-input bg-background px-1 text-sm text-right"
-                    >
-                      <option value={0}>0%</option>
-                      <option value={0.08}>8%</option>
-                      <option value={0.1}>10%</option>
+                    <select value={line.tax_rate} onChange={(e) => updateLine(line.id, 'tax_rate', Number(e.target.value))} className="w-full h-8 rounded-md border border-input bg-background px-1 text-sm text-right">
+                      <option value={0}>0%</option><option value={0.08}>8%</option><option value={0.1}>10%</option>
                     </select>
                   </td>
-                  <td className="py-2">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(line.id)}
-                      disabled={lineItems.length === 1}
-                      className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
+                  <td className="py-2"><button type="button" onClick={() => removeLine(line.id)} disabled={lineItems.length === 1} className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-3">
+          {lineItems.map((line, idx) => (
+            <div key={line.id} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500">明細 {idx + 1}</span>
+                <button type="button" onClick={() => removeLine(line.id)} disabled={lineItems.length === 1} className="p-2 -m-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">作業内容・使用部品名</Label>
+                <Input value={line.description} onChange={(e) => updateLine(line.id, 'description', e.target.value)} placeholder="品名・作業内容" className="h-11 text-base" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">区分</Label>
+                  <select value={line.category} onChange={(e) => updateLine(line.id, 'category', e.target.value)} className="w-full h-11 rounded-lg border border-input bg-background px-3 text-base">
+                    <option value="部品">部品</option><option value="技術">技術</option><option value="その他">その他</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">税率</Label>
+                  <select value={line.tax_rate} onChange={(e) => updateLine(line.id, 'tax_rate', Number(e.target.value))} className="w-full h-11 rounded-lg border border-input bg-background px-3 text-base">
+                    <option value={0}>0%</option><option value={0.08}>8%</option><option value={0.1}>10%</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">数量</Label>
+                  <Input type="number" min={0} value={line.quantity} onChange={(e) => updateLine(line.id, 'quantity', e.target.value === '' ? '' : Number(e.target.value))} className="h-11 text-base text-right tabular-nums" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">単価</Label>
+                  <CurrencyInput value={line.unit_price} onChange={(v) => updateLine(line.id, 'unit_price', v)} className="h-11 text-base" />
+                </div>
+              </div>
+              {line.amount > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                  <span className="text-xs text-gray-500">金額</span>
+                  <span className="text-base font-bold tabular-nums text-gray-900">{formatCurrency(line.amount)}</span>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
         <button
@@ -581,42 +580,36 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
         </button>
 
         {/* Totals */}
-        <div className="mt-5 border-t border-gray-200 pt-4 flex flex-col items-end gap-1.5 text-sm">
-          <div className="flex items-center gap-6">
+        <div className="mt-5 border-t border-gray-200 pt-4 space-y-2 text-sm">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">部品合計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(partsSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(partsSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">技術料合計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(laborSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(laborSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">小計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(subtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(subtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">値引き</span>
-            <div className="w-36">
-              <CurrencyInput
-                value={discount || ''}
-                onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)}
-                className="h-7 text-sm text-right"
-              />
+            <div className="w-32 sm:w-36">
+              <CurrencyInput value={discount || ''} onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)} className="h-9 text-sm text-right" />
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">課税計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(discountedSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(discountedSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">消費税</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(taxAmount)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(taxAmount)}</span>
           </div>
-          <div className="flex items-center gap-6 mt-1 pt-1.5 border-t border-gray-200">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200">
             <span className="font-bold text-base text-gray-900">総合計</span>
-            <span className="tabular-nums w-36 text-right font-bold text-lg text-gray-900">
-              {formatCurrency(total)}
-            </span>
+            <span className="tabular-nums font-bold text-xl text-gray-900">{formatCurrency(total)}</span>
           </div>
         </div>
       </div>
@@ -634,15 +627,15 @@ export function InvoiceForm({ initialData, mode, defaultValues }: InvoiceFormPro
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 pb-6">
-        <Button variant="outline" onClick={() => router.push('/invoices')} disabled={saving}>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 pb-6">
+        <Button variant="outline" onClick={() => router.push('/invoices')} disabled={saving} className="h-12 sm:h-auto">
           キャンセル
         </Button>
-        <Button variant="outline" onClick={() => handleSave('draft')} disabled={saving} className="gap-1.5">
+        <Button variant="outline" onClick={() => handleSave('draft')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Save className="w-4 h-4" />
           下書き保存
         </Button>
-        <Button onClick={() => handleSave('sent')} disabled={saving} className="gap-1.5">
+        <Button onClick={() => handleSave('sent')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Send className="w-4 h-4" />
           {mode === 'edit' ? '送付済みにする' : '作成して送付'}
         </Button>

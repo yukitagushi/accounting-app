@@ -383,7 +383,8 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">明細</h2>
 
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
@@ -452,42 +453,124 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
           </table>
         </div>
 
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-3">
+          {lineItems.map((line, idx) => (
+            <div key={line.id} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500">明細 {idx + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.id)}
+                  disabled={lineItems.length === 1}
+                  className="p-1.5 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">作業内容・使用部品名</Label>
+                <Input
+                  value={line.description}
+                  onChange={(e) => updateLine(line.id, 'description', e.target.value)}
+                  placeholder="品名・作業内容"
+                  className="h-11 text-base"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">区分</Label>
+                  <select
+                    value={line.category}
+                    onChange={(e) => updateLine(line.id, 'category', e.target.value)}
+                    className="w-full h-11 rounded-lg border border-input bg-background px-3 text-base"
+                  >
+                    <option value="部品">部品</option>
+                    <option value="技術">技術</option>
+                    <option value="その他">その他</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">税率</Label>
+                  <select
+                    value={line.tax_rate}
+                    onChange={(e) => updateLine(line.id, 'tax_rate', Number(e.target.value))}
+                    className="w-full h-11 rounded-lg border border-input bg-background px-3 text-base"
+                  >
+                    <option value={0}>0%</option>
+                    <option value={0.08}>8%</option>
+                    <option value={0.1}>10%</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">数量</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={line.quantity}
+                    onChange={(e) => updateLine(line.id, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                    className="h-11 text-base text-right tabular-nums"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">単価</Label>
+                  <CurrencyInput
+                    value={line.unit_price}
+                    onChange={(v) => updateLine(line.id, 'unit_price', v)}
+                    className="h-11 text-base"
+                  />
+                </div>
+              </div>
+              {line.amount > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                  <span className="text-xs text-gray-500">金額</span>
+                  <span className="text-base font-bold tabular-nums text-gray-900">
+                    {formatCurrency(line.amount)}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
         <button type="button" onClick={addLine} className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
           <Plus className="w-4 h-4" />
           明細を追加
         </button>
 
         {/* Totals */}
-        <div className="mt-5 border-t border-gray-200 pt-4 flex flex-col items-end gap-1.5 text-sm">
-          <div className="flex items-center gap-6">
+        <div className="mt-5 border-t border-gray-200 pt-4 space-y-2 text-sm">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">部品合計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(partsSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(partsSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">技術料合計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(laborSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(laborSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">小計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(subtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(subtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">値引き</span>
-            <div className="w-36">
-              <CurrencyInput value={discount || ''} onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)} className="h-7 text-sm text-right" />
+            <div className="w-32 sm:w-36">
+              <CurrencyInput value={discount || ''} onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)} className="h-9 text-sm text-right" />
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">課税計</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(discountedSubtotal)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(discountedSubtotal)}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between">
             <span className="text-gray-600">消費税</span>
-            <span className="tabular-nums w-36 text-right">{formatCurrency(taxAmount)}</span>
+            <span className="tabular-nums font-medium">{formatCurrency(taxAmount)}</span>
           </div>
-          <div className="flex items-center gap-6 mt-1 pt-1.5 border-t border-gray-200">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200">
             <span className="font-bold text-base text-gray-900">総合計</span>
-            <span className="tabular-nums w-36 text-right font-bold text-lg text-gray-900">
+            <span className="tabular-nums font-bold text-xl text-gray-900">
               {formatCurrency(total)}
             </span>
           </div>
@@ -501,15 +584,15 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 pb-6">
-        <Button variant="outline" onClick={() => router.push('/estimates')} disabled={saving}>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 pb-6">
+        <Button variant="outline" onClick={() => router.push('/estimates')} disabled={saving} className="h-12 sm:h-auto">
           キャンセル
         </Button>
-        <Button variant="outline" onClick={() => handleSave('draft')} disabled={saving} className="gap-1.5">
+        <Button variant="outline" onClick={() => handleSave('draft')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Save className="w-4 h-4" />
           下書き保存
         </Button>
-        <Button onClick={() => handleSave('sent')} disabled={saving} className="gap-1.5">
+        <Button onClick={() => handleSave('sent')} disabled={saving} className="gap-1.5 h-12 sm:h-auto">
           <Send className="w-4 h-4" />
           送付済みにする
         </Button>
@@ -561,7 +644,7 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
     <>
       {/* Mobile preview toggle */}
       <div className="lg:hidden mb-4">
-        <Button variant="outline" size="sm" onClick={() => setShowMobilePreview(!showMobilePreview)} className="gap-1.5">
+        <Button variant="outline" size="sm" onClick={() => setShowMobilePreview(!showMobilePreview)} className="gap-1.5 h-12">
           {showMobilePreview ? (
             <><EyeOff className="w-4 h-4" />フォームに戻る</>
           ) : (
