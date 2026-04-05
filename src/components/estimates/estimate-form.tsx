@@ -188,21 +188,37 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await fetch('/api/ocr', { method: 'POST', body: formData })
+
+      // HEIC/HEIFはocr-vision非対応のため従来OCRにフォールバック
+      const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
+      const endpoint = isHeic ? '/api/ocr' : '/api/ocr-vision'
+
+      const res = await fetch(endpoint, { method: 'POST', body: formData })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'OCR失敗')
+        throw new Error(err.error || 'スキャン失敗')
       }
-      const { text } = await res.json()
-      const parsed = parseVehicleRegistration(text)
 
       setShowVehicleInfo(true)
       let filled = 0
-      if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
-      if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
-      if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
-      if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
-      if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
+
+      if (isHeic) {
+        // 従来OCR（テキスト抽出）→ 正規表現パース
+        const { text } = await res.json()
+        const parsed = parseVehicleRegistration(text)
+        if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
+        if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
+        if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
+        if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
+        if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
+      } else {
+        // Vision API（GPT-4o）→ 構造化JSONで直接取得
+        const data = await res.json()
+        if (data.vehicle_model) { setVehicleName(data.vehicle_model); filled++ }
+        if (data.vehicle_number) { setVehicleNumber(data.vehicle_number); filled++ }
+        if (data.vehicle_year) { setFirstRegistration(data.vehicle_year); filled++ }
+        if (data.vehicle_inspection_date) { setNextInspectionDate(data.vehicle_inspection_date); filled++ }
+      }
 
       if (filled > 0) {
         toast.success(`車検証から${filled}件の情報を自動入力しました`)
