@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { Building2, Check, ChevronsUpDown, Layers } from 'lucide-react'
 import {
   DropdownMenu,
@@ -16,13 +17,20 @@ import type { Branch } from '@/lib/types'
 // 拠点一覧（トータルは id='all' の特殊エントリ）
 export const APP_BRANCHES: Branch[] = [
   { id: 'all', name: 'トータル', code: 'ALL', created_at: '' },
-  { id: '00000000-0000-0000-0000-000000000001', name: '滝沢工場', code: 'TKZ', created_at: '' },
-  { id: '00000000-0000-0000-0000-000000000002', name: '三ツ割工場', code: 'MTW', created_at: '' },
-  { id: '00000000-0000-0000-0000-000000000003', name: '本社工場', code: 'HQ', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000001', name: '本社', code: 'HQ', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000002', name: '滝沢', code: 'TKZ', created_at: '' },
+  { id: '00000000-0000-0000-0000-000000000003', name: '三ツ割', code: 'MTW', created_at: '' },
 ]
 
 export function BranchSelector() {
   const { currentBranch, setCurrentBranch } = useBranchStore()
+  const initialized = useRef(false)
+
+  useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
+    fetch('/api/branches/init', { method: 'POST' }).catch(() => {})
+  }, [])
 
   const activeBranch = currentBranch ?? APP_BRANCHES[0]
 

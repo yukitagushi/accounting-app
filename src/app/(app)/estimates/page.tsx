@@ -12,6 +12,7 @@ import { Plus, FileText, Search, Calendar, User, ArrowUpDown } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportEstimates } from '@/lib/csv-export'
+import { useBranchStore } from '@/hooks/use-branch'
 
 function formatCurrency(val: number): string {
   return '¥' + val.toLocaleString('ja-JP')
@@ -32,10 +33,12 @@ export default function EstimatesPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
   useEffect(() => {
-    getEstimates().then(setEstimates)
-  }, [])
+    getEstimates(branchId).then(setEstimates)
+  }, [branchId])
 
   const filtered = estimates.filter((e) => {
     if (statusFilter !== 'all' && e.status !== statusFilter) return false
