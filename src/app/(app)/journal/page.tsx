@@ -1,17 +1,30 @@
-export const dynamic = 'force-dynamic'
+'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Plus, Camera } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { getJournalEntries, getAccounts } from '@/lib/mock-data'
 import { JournalList } from './journal-list'
+import { useBranchStore } from '@/hooks/use-branch'
+import type { JournalEntry, Account } from '@/lib/types'
 
-export default async function JournalPage() {
-  const [entries, accounts] = await Promise.all([
-    getJournalEntries(),
-    getAccounts(),
-  ])
+export default function JournalPage() {
+  const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
+
+  useEffect(() => {
+    Promise.all([
+      getJournalEntries(branchId),
+      getAccounts(branchId),
+    ]).then(([e, a]) => {
+      setEntries(e)
+      setAccounts(a)
+    }).catch(() => {})
+  }, [branchId])
 
   return (
     <div className="space-y-6">

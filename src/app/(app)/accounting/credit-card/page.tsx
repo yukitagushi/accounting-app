@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportCreditCardTransactions } from '@/lib/csv-export'
+import { useBranchStore } from '@/hooks/use-branch'
 
 function formatCurrency(val: number): string {
   return '¥' + val.toLocaleString('ja-JP')
@@ -29,10 +30,12 @@ const DEFAULT_FEE_RATE = 0.032
 
 export default function CreditCardPage() {
   const [transactions, setTransactions] = useState<CreditCardTransaction[]>([])
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
   useEffect(() => {
-    getCreditCardTransactions().then(setTransactions)
-  }, [])
+    getCreditCardTransactions(branchId).then(setTransactions).catch(() => {})
+  }, [branchId])
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // New transaction form state

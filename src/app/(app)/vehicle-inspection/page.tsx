@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { Plus, Car, Calendar, User } from 'lucide-react'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportVehicleInspections } from '@/lib/csv-export'
+import { useBranchStore } from '@/hooks/use-branch'
 
 function formatCurrency(val: number): string {
   return '¥' + val.toLocaleString('ja-JP')
@@ -36,10 +37,12 @@ function formatDiff(diff: number): string {
 
 export default function VehicleInspectionListPage() {
   const [inspections, setInspections] = useState<VehicleInspection[]>([])
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
   useEffect(() => {
-    getVehicleInspections().then(setInspections)
-  }, [])
+    getVehicleInspections(branchId).then(setInspections).catch(() => {})
+  }, [branchId])
 
   return (
     <div>

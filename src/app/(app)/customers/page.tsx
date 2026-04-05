@@ -13,6 +13,7 @@ import {
   getNextCustomerCode,
 } from '@/lib/mock-data'
 import type { Customer } from '@/lib/types'
+import { useBranchStore } from '@/hooks/use-branch'
 import {
   Users,
   Plus,
@@ -739,13 +740,16 @@ export default function CustomersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
   const [csvDialogOpen, setCsvDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
   useEffect(() => {
-    getCustomers().then((data) => {
+    setLoading(true)
+    getCustomers(branchId).then((data) => {
       setCustomers(data)
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => {})
+  }, [branchId])
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return customers

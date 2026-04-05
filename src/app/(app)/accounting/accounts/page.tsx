@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getAccounts } from '@/lib/mock-data'
 import { ACCOUNT_CATEGORIES } from '@/lib/constants'
+import { useBranchStore } from '@/hooks/use-branch'
 import type { Account, AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
@@ -136,10 +137,12 @@ export default function AccountsPage() {
   const [collapsed, setCollapsed] = useState<Set<AccountCategory>>(new Set())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<Account | null>(null)
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
   useEffect(() => {
-    getAccounts().then(setAccounts)
-  }, [])
+    getAccounts(branchId).then(setAccounts).catch(() => {})
+  }, [branchId])
 
   const grouped = useMemo(() => {
     const map = {} as Record<AccountCategory, Account[]>
