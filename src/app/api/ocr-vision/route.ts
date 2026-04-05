@@ -6,7 +6,7 @@ export const maxDuration = 60
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 // OpenAI Vision API supports JPEG, PNG, WebP, GIF only — NOT HEIC/HEIF
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -63,8 +63,9 @@ export async function POST(request: NextRequest) {
 返すJSONのフィールド:
 - vehicle_number: 登録番号（例: "岩手 300 あ 1234"）
 - vehicle_model: 車名（例: "アルファード", "プリウス"）
-- vehicle_year: 初度登録年（元号または西暦、例: "令和3年" または "2021"）
+- vehicle_year: 初度登録年月（元号と年月を含めて返してください。例: "令和3年4月", "平成30年12月"）
 - vehicle_inspection_date: 有効期間の満了する日（YYYY-MM-DD形式で返してください、例: "2025-10-31"）
+- vehicle_weight: 車両重量（数値のみ、単位kg不要。例: "1500"）
 JSONのみ返してください。説明文は不要です。`,
               },
               {
@@ -106,9 +107,10 @@ JSONのみ返してください。説明文は不要です。`,
       vehicle_model: parsed.vehicle_model ?? null,
       vehicle_year: parsed.vehicle_year ?? null,
       vehicle_inspection_date: parsed.vehicle_inspection_date ?? null,
+      vehicle_weight: parsed.vehicle_weight ?? null,
     }
     const nonNullCount = Object.values(result).filter(Boolean).length
-    console.log(`[ocr-vision] extracted ${nonNullCount}/4 fields:`, JSON.stringify(result))
+    console.log(`[ocr-vision] extracted ${nonNullCount}/5 fields:`, JSON.stringify(result))
     return NextResponse.json(result)
   } catch (err) {
     console.error('OCR Vision route error:', err)

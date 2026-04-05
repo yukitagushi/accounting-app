@@ -42,6 +42,18 @@ function calcLineAmount(qty: number | '', price: number | ''): number {
   return (qty as number) * (price as number)
 }
 
+/** 「令和3年4月」→「R3/4」、「平成30年12月」→「H30/12」、「2021」→「2021」 */
+function convertVehicleYear(raw: string): string {
+  const reiwa = raw.match(/令和\s*(\d+)年\s*(\d+)?月?/)
+  if (reiwa) return reiwa[2] ? `R${reiwa[1]}/${reiwa[2]}` : `R${reiwa[1]}`
+  const heisei = raw.match(/平成\s*(\d+)年\s*(\d+)?月?/)
+  if (heisei) return heisei[2] ? `H${heisei[1]}/${heisei[2]}` : `H${heisei[1]}`
+  const showa = raw.match(/昭和\s*(\d+)年\s*(\d+)?月?/)
+  if (showa) return showa[2] ? `S${showa[1]}/${showa[2]}` : `S${showa[1]}`
+  // 西暦そのまま or パース不能ならそのまま返す
+  return raw.trim()
+}
+
 function parseVehicleRegistration(text: string): {
   vehicleName?: string
   vehicleNumber?: string
@@ -57,26 +69,35 @@ function parseVehicleRegistration(text: string): {
     vehicleWeight?: string
   } = {}
 
-  // 車名
+  // 車名（OCRで「車 名」「車名」「車　名」等の揺れに対応）
   const vehicleNameMatch = text.match(/車\s*名[\s:：　]*([^\s\n　]{2,10})/)
   if (vehicleNameMatch) result.vehicleName = vehicleNameMatch[1]
 
   // 車両番号（ナンバープレート: 地名 分類番号 ひらがな 連番）
-  const plateMatch = text.match(/([\u4e00-\u9fff]{1,4})\s*(\d{2,3})\s*([\u3041-\u3096])\s*(\d{4})/)
+  // カタカナの「ー」や全角数字にも対応
+  const plateMatch = text.match(/([\u4e00-\u9fff]{1,4})\s*(\d{2,3})\s*([\u3041-\u3096\u30A0-\u30FF])\s*(\d{1,4})/)
   if (plateMatch) {
-    result.vehicleNumber = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${plateMatch[4]}`
+    const serialNum = plateMatch[4].padStart(4, '0')
+    result.vehicleNumber = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${serialNum}`
   }
 
-  // 初度登録年月
-  const reiwaFirstReg = text.match(/初度登録年月[\s\S]{0,10}令和\s*(\d+)年\s*(\d+)月/)
-  const heiseiFirstReg = text.match(/初度登録年月[\s\S]{0,10}平成\s*(\d+)年\s*(\d+)月/)
-  const showaFirstReg = text.match(/初度登録年月[\s\S]{0,10}昭和\s*(\d+)年\s*(\d+)月/)
+  // 初度登録年月（「初度登録」だけの場合や、ラベルとの距離が離れている場合にも対応）
+  const reiwaFirstReg = text.match(/初度登録[\s\S]{0,20}令和\s*(\d+)\s*年\s*(\d+)\s*月/)
+  const heiseiFirstReg = text.match(/初度登録[\s\S]{0,20}平成\s*(\d+)\s*年\s*(\d+)\s*月/)
+  const showaFirstReg = text.match(/初度登録[\s\S]{0,20}昭和\s*(\d+)\s*年\s*(\d+)\s*月/)
   if (reiwaFirstReg) {
     result.firstRegistration = `R${reiwaFirstReg[1]}/${reiwaFirstReg[2]}`
   } else if (heiseiFirstReg) {
     result.firstRegistration = `H${heiseiFirstReg[1]}/${heiseiFirstReg[2]}`
   } else if (showaFirstReg) {
     result.firstRegistration = `S${showaFirstReg[1]}/${showaFirstReg[2]}`
+  } else {
+    // 「初度登録」ラベルなしでも元号+年月パターンを探す（フォールバック）
+    const anyEraReg = text.match(/(令和|平成|昭和)\s*(\d+)\s*年\s*(\d+)\s*月/)
+    if (anyEraReg) {
+      const prefix = anyEraReg[1] === '令和' ? 'R' : anyEraReg[1] === '平成' ? 'H' : 'S'
+      result.firstRegistration = `${prefix}${anyEraReg[2]}/${anyEraReg[3]}`
+    }
   }
 
   // 有効期間の満了する日（次回車検日）
@@ -88,13 +109,14 @@ function parseVehicleRegistration(text: string): {
     const y = baseYear + Number(year)
     return `${y}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   }
-  const expiryMatch = text.match(/有効期間[\s\S]{0,20}(令和|平成|昭和)\s*(\d+)年\s*(\d+)月\s*(\d+)日/)
+  // 「満了する日」「有効期間」等の揺れに対応、距離を広めに取る
+  const expiryMatch = text.match(/(?:有効期間|満了)[\s\S]{0,30}(令和|平成|昭和)\s*(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日/)
   if (expiryMatch) {
     result.nextInspectionDate = convertJapaneseDate(expiryMatch[1], expiryMatch[2], expiryMatch[3], expiryMatch[4])
   }
 
-  // 車両重量（kg）
-  const weightMatch = text.match(/車両重量[\s:：　]*(\d+)\s*(?:kg|ｋｇ)/i)
+  // 車両重量（kg）- 「kg」なしでも数値だけ取れるよう緩和
+  const weightMatch = text.match(/車両重量[\s:：　]*(\d{3,5})\s*(?:kg|ｋｇ|キログラム)?/i)
   if (weightMatch) result.vehicleWeight = weightMatch[1]
 
   return result
@@ -190,35 +212,49 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       formData.append('file', file)
 
       // HEIC/HEIFはocr-vision非対応のため従来OCRにフォールバック
-      const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
-      const endpoint = isHeic ? '/api/ocr' : '/api/ocr-vision'
+      // file.typeが空の場合（一部モバイルブラウザ）は拡張子で判定
+      const fileType = file.type || ''
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+      const isHeic = fileType === 'image/heic' || fileType === 'image/heif' || ext === 'heic' || ext === 'heif'
 
-      const res = await fetch(endpoint, { method: 'POST', body: formData })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'スキャン失敗')
+      let filled = 0
+
+      if (!isHeic) {
+        // Vision API（GPT-4o）→ 構造化JSONで直接取得を試行
+        const visionFormData = new FormData()
+        visionFormData.append('file', file)
+        const res = await fetch('/api/ocr-vision', { method: 'POST', body: visionFormData })
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.vehicle_model) { setVehicleName(data.vehicle_model); filled++ }
+          if (data.vehicle_number) { setVehicleNumber(data.vehicle_number); filled++ }
+          if (data.vehicle_year) { setFirstRegistration(convertVehicleYear(data.vehicle_year)); filled++ }
+          if (data.vehicle_inspection_date) { setNextInspectionDate(data.vehicle_inspection_date); filled++ }
+          if (data.vehicle_weight) { setVehicleWeightStr(data.vehicle_weight); filled++ }
+        }
+      }
+
+      // Vision APIで取得できなかった場合、または HEIC の場合は従来OCRにフォールバック
+      if (filled === 0) {
+        const ocrFormData = new FormData()
+        ocrFormData.append('file', file)
+        const ocrRes = await fetch('/api/ocr', { method: 'POST', body: ocrFormData })
+
+        if (ocrRes.ok) {
+          const { text } = await ocrRes.json()
+          if (text) {
+            const parsed = parseVehicleRegistration(text)
+            if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
+            if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
+            if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
+            if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
+            if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
+          }
+        }
       }
 
       setShowVehicleInfo(true)
-      let filled = 0
-
-      if (isHeic) {
-        // 従来OCR（テキスト抽出）→ 正規表現パース
-        const { text } = await res.json()
-        const parsed = parseVehicleRegistration(text)
-        if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
-        if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
-        if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
-        if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
-        if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
-      } else {
-        // Vision API（GPT-4o）→ 構造化JSONで直接取得
-        const data = await res.json()
-        if (data.vehicle_model) { setVehicleName(data.vehicle_model); filled++ }
-        if (data.vehicle_number) { setVehicleNumber(data.vehicle_number); filled++ }
-        if (data.vehicle_year) { setFirstRegistration(data.vehicle_year); filled++ }
-        if (data.vehicle_inspection_date) { setNextInspectionDate(data.vehicle_inspection_date); filled++ }
-      }
 
       if (filled > 0) {
         toast.success(`車検証から${filled}件の情報を自動入力しました`)
