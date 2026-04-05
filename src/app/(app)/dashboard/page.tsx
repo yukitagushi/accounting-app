@@ -129,6 +129,8 @@ export default function DashboardPage() {
       setJournalEntries(entries)
       setVehicleInspections(vis)
       setLoading(false)
+    }).catch(() => {
+      setLoading(false)
     })
   }, [branchId])
 
@@ -138,22 +140,22 @@ export default function DashboardPage() {
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`
 
-  const thisMonthInvoices = invoices.filter((i) => i.issue_date.startsWith(thisMonthStr))
-  const prevMonthInvoices = invoices.filter((i) => i.issue_date.startsWith(prevMonthStr))
-  const monthlyRevenue = thisMonthInvoices.reduce((s, i) => s + i.total, 0)
-  const prevMonthRevenue = prevMonthInvoices.reduce((s, i) => s + i.total, 0)
+  const thisMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(thisMonthStr))
+  const prevMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(prevMonthStr))
+  const monthlyRevenue = thisMonthInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
+  const prevMonthRevenue = prevMonthInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
   const revenueTrend = prevMonthRevenue > 0
     ? ((monthlyRevenue - prevMonthRevenue) / prevMonthRevenue) * 100
     : 0
 
   const unpaidInvoices = invoices.filter((i) => i.status === 'sent' || i.status === 'overdue')
-  const unpaidTotal = unpaidInvoices.reduce((s, i) => s + i.total, 0)
+  const unpaidTotal = unpaidInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
 
-  const thisMonthEntries = journalEntries.filter((e) => e.entry_date.startsWith(thisMonthStr))
+  const thisMonthEntries = journalEntries.filter((e) => e.entry_date?.startsWith(thisMonthStr))
   const activeInspections = vehicleInspections.filter((vi) => vi.status === 'pending' || vi.status === 'in_progress')
 
   const recentEntries = [...journalEntries]
-    .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+    .sort((a, b) => (b.entry_date ?? '').localeCompare(a.entry_date ?? ''))
     .slice(0, 5)
 
   // Build bar chart data: last 6 months
@@ -161,8 +163,8 @@ export default function DashboardPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     const revenue = invoices
-      .filter((inv) => inv.issue_date.startsWith(monthStr))
-      .reduce((s, inv) => s + inv.total, 0)
+      .filter((inv) => inv.issue_date?.startsWith(monthStr))
+      .reduce((s, inv) => s + (inv.total ?? 0), 0)
     return { month: getMonthLabel(d), revenue }
   })
 

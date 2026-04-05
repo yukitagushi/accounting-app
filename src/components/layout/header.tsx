@@ -7,7 +7,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -115,10 +114,10 @@ export function Header({ onMenuClick }: HeaderProps) {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuLabel className="pb-1">
+          <div className="px-1.5 py-1 pb-1">
             <p className="text-sm font-semibold text-gray-900">田中 太郎</p>
             <p className="text-xs text-gray-500 font-normal mt-0.5">tanaka@company.co.jp</p>
-          </DropdownMenuLabel>
+          </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer gap-2 text-sm">
             <User className="w-4 h-4 text-gray-400" />

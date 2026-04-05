@@ -47,7 +47,7 @@ export default function InvoicesPage() {
     if (dateFrom && inv.issue_date < dateFrom) return false
     if (dateTo && inv.issue_date > dateTo) return false
     return true
-  }).sort((a, b) => sortOrder === 'newest' ? b.issue_date.localeCompare(a.issue_date) : a.issue_date.localeCompare(b.issue_date))
+  }).sort((a, b) => sortOrder === 'newest' ? (b.issue_date ?? '').localeCompare(a.issue_date ?? '') : (a.issue_date ?? '').localeCompare(b.issue_date ?? ''))
 
   const totalAmount = invoices.reduce((sum, i) => sum + i.total, 0)
   const unpaidAmount = invoices

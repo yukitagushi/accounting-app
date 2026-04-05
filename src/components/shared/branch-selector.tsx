@@ -6,7 +6,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -51,9 +50,9 @@ export function BranchSelector() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuLabel className="text-xs text-gray-500 font-medium">
+        <div className="px-1.5 py-1 text-xs font-medium text-gray-500">
           拠点を選択
-        </DropdownMenuLabel>
+        </div>
         <DropdownMenuSeparator />
         {APP_BRANCHES.map((branch) => (
           <DropdownMenuItem
