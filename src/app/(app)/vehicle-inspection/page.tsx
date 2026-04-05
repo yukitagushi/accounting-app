@@ -1,10 +1,12 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
-import { getMockVehicleInspections } from '@/lib/mock-data'
+import { getVehicleInspections } from '@/lib/mock-data'
+import type { VehicleInspection } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Plus, Car, Calendar, User } from 'lucide-react'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
@@ -33,7 +35,11 @@ function formatDiff(diff: number): string {
 }
 
 export default function VehicleInspectionListPage() {
-  const inspections = getMockVehicleInspections()
+  const [inspections, setInspections] = useState<VehicleInspection[]>([])
+
+  useEffect(() => {
+    getVehicleInspections().then(setInspections)
+  }, [])
 
   return (
     <div>

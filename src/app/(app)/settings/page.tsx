@@ -24,13 +24,13 @@ import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
 import {
   MOCK_BRANCHES,
-  MOCK_ESTIMATES,
-  MOCK_INVOICES,
-  getMockJournalEntries,
-  getMockAccounts,
-  getMockVehicleInspections,
-  getMockCreditCardTransactions,
   getMockTrialBalance,
+  getJournalEntries,
+  getAccounts,
+  getVehicleInspections,
+  getCreditCardTransactions,
+  getEstimates,
+  getInvoices,
 } from '@/lib/mock-data'
 import {
   exportJournalEntries,
@@ -731,20 +731,24 @@ function DataTab() {
     }, 1500)
   }
 
-  function handleExportAll() {
+  async function handleExportAll() {
     const today = new Date().toISOString().split('T')[0]
     const startOfYear = `${new Date().getFullYear()}-01-01`
-    const journals = getMockJournalEntries()
-    const accounts = getMockAccounts()
-    const inspections = getMockVehicleInspections()
-    const transactions = getMockCreditCardTransactions()
-    const trialBalance = getMockTrialBalance()
     const period = new Date().toISOString().slice(0, 7)
+    const [journals, accounts, inspections, transactions, estimates, invoices] = await Promise.all([
+      getJournalEntries(),
+      getAccounts(),
+      getVehicleInspections(),
+      getCreditCardTransactions(),
+      getEstimates(),
+      getInvoices(),
+    ])
+    const trialBalance = getMockTrialBalance()
 
     exportJournalEntries(journals, accounts, startOfYear, today)
     setTimeout(() => exportTrialBalance(trialBalance, period), 300)
-    setTimeout(() => exportEstimates(MOCK_ESTIMATES, startOfYear, today), 600)
-    setTimeout(() => exportInvoices(MOCK_INVOICES, startOfYear, today), 900)
+    setTimeout(() => exportEstimates(estimates, startOfYear, today), 600)
+    setTimeout(() => exportInvoices(invoices, startOfYear, today), 900)
     setTimeout(() => exportVehicleInspections(inspections, startOfYear, today), 1200)
     setTimeout(() => exportCreditCardTransactions(transactions, startOfYear, today), 1500)
     setTimeout(() => exportAccounts(accounts), 1800)
@@ -754,10 +758,11 @@ function DataTab() {
     {
       label: '仕訳帳 (CSV)',
       desc: '仕訳一覧を CSV 形式でエクスポート',
-      onClick: () => {
+      onClick: async () => {
         const today = new Date().toISOString().split('T')[0]
         const start = `${new Date().getFullYear()}-01-01`
-        exportJournalEntries(getMockJournalEntries(), getMockAccounts(), start, today)
+        const [journals, accounts] = await Promise.all([getJournalEntries(), getAccounts()])
+        exportJournalEntries(journals, accounts, start, today)
       },
     },
     {
@@ -771,43 +776,50 @@ function DataTab() {
     {
       label: '見積書一覧 (CSV)',
       desc: '見積書データをエクスポート',
-      onClick: () => {
+      onClick: async () => {
         const today = new Date().toISOString().split('T')[0]
         const start = `${new Date().getFullYear()}-01-01`
-        exportEstimates(MOCK_ESTIMATES, start, today)
+        const estimates = await getEstimates()
+        exportEstimates(estimates, start, today)
       },
     },
     {
       label: '請求書一覧 (CSV)',
       desc: '請求書・入金状況をエクスポート',
-      onClick: () => {
+      onClick: async () => {
         const today = new Date().toISOString().split('T')[0]
         const start = `${new Date().getFullYear()}-01-01`
-        exportInvoices(MOCK_INVOICES, start, today)
+        const invoices = await getInvoices()
+        exportInvoices(invoices, start, today)
       },
     },
     {
       label: '車検一覧 (CSV)',
       desc: '車検データをエクスポート',
-      onClick: () => {
+      onClick: async () => {
         const today = new Date().toISOString().split('T')[0]
         const start = `${new Date().getFullYear()}-01-01`
-        exportVehicleInspections(getMockVehicleInspections(), start, today)
+        const inspections = await getVehicleInspections()
+        exportVehicleInspections(inspections, start, today)
       },
     },
     {
       label: 'クレカ決済 (CSV)',
       desc: 'クレジットカード決済データをエクスポート',
-      onClick: () => {
+      onClick: async () => {
         const today = new Date().toISOString().split('T')[0]
         const start = `${new Date().getFullYear()}-01-01`
-        exportCreditCardTransactions(getMockCreditCardTransactions(), start, today)
+        const transactions = await getCreditCardTransactions()
+        exportCreditCardTransactions(transactions, start, today)
       },
     },
     {
       label: '勘定科目一覧 (CSV)',
       desc: '勘定科目マスタをエクスポート',
-      onClick: () => exportAccounts(getMockAccounts()),
+      onClick: async () => {
+        const accounts = await getAccounts()
+        exportAccounts(accounts)
+      },
     },
   ]
 

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CurrencyInput } from '@/components/shared/currency-input'
-import { getMockCreditCardTransactions } from '@/lib/mock-data'
+import { getCreditCardTransactions } from '@/lib/mock-data'
 import type { CreditCardTransaction } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
@@ -28,9 +28,11 @@ function formatCurrency(val: number): string {
 const DEFAULT_FEE_RATE = 0.032
 
 export default function CreditCardPage() {
-  const [transactions, setTransactions] = useState<CreditCardTransaction[]>(
-    getMockCreditCardTransactions()
-  )
+  const [transactions, setTransactions] = useState<CreditCardTransaction[]>([])
+
+  useEffect(() => {
+    getCreditCardTransactions().then(setTransactions)
+  }, [])
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // New transaction form state
