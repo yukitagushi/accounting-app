@@ -208,14 +208,10 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
   async function handleVehicleScan(file: File) {
     setVehicleScanLoading(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      // HEIC/HEIFはocr-vision非対応のため従来OCRにフォールバック
-      // file.typeが空の場合（一部モバイルブラウザ）は拡張子で判定
       const fileType = file.type || ''
       const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
       const isHeic = fileType === 'image/heic' || fileType === 'image/heif' || ext === 'heic' || ext === 'heif'
+      console.log(`[vehicleScan] file: ${file.name}, type: ${fileType}, ext: ${ext}, isHeic: ${isHeic}`)
 
       let filled = 0
 
@@ -224,33 +220,42 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
         const visionFormData = new FormData()
         visionFormData.append('file', file)
         const res = await fetch('/api/ocr-vision', { method: 'POST', body: visionFormData })
+        const resBody = await res.json()
+        console.log(`[vehicleScan] ocr-vision status: ${res.status}`, resBody)
 
         if (res.ok) {
-          const data = await res.json()
-          if (data.vehicle_model) { setVehicleName(data.vehicle_model); filled++ }
-          if (data.vehicle_number) { setVehicleNumber(data.vehicle_number); filled++ }
-          if (data.vehicle_year) { setFirstRegistration(convertVehicleYear(data.vehicle_year)); filled++ }
-          if (data.vehicle_inspection_date) { setNextInspectionDate(data.vehicle_inspection_date); filled++ }
-          if (data.vehicle_weight) { setVehicleWeightStr(data.vehicle_weight); filled++ }
+          if (resBody.vehicle_model) { setVehicleName(resBody.vehicle_model); filled++ }
+          if (resBody.vehicle_number) { setVehicleNumber(resBody.vehicle_number); filled++ }
+          if (resBody.vehicle_year) { setFirstRegistration(convertVehicleYear(resBody.vehicle_year)); filled++ }
+          if (resBody.vehicle_inspection_date) { setNextInspectionDate(resBody.vehicle_inspection_date); filled++ }
+          if (resBody.vehicle_weight) { setVehicleWeightStr(resBody.vehicle_weight); filled++ }
+        } else {
+          console.warn(`[vehicleScan] ocr-vision failed: ${res.status}`, resBody.error)
         }
       }
 
       // Vision APIで取得できなかった場合、または HEIC の場合は従来OCRにフォールバック
       if (filled === 0) {
+        console.log('[vehicleScan] falling back to ConvertAPI OCR...')
         const ocrFormData = new FormData()
         ocrFormData.append('file', file)
         const ocrRes = await fetch('/api/ocr', { method: 'POST', body: ocrFormData })
+        const ocrBody = await ocrRes.json()
+        console.log(`[vehicleScan] ocr status: ${ocrRes.status}`, ocrBody)
 
-        if (ocrRes.ok) {
-          const { text } = await ocrRes.json()
-          if (text) {
-            const parsed = parseVehicleRegistration(text)
-            if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
-            if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
-            if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
-            if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
-            if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
-          }
+        if (ocrRes.ok && ocrBody.text) {
+          console.log('[vehicleScan] OCR text:', ocrBody.text)
+          const parsed = parseVehicleRegistration(ocrBody.text)
+          console.log('[vehicleScan] parsed:', parsed)
+          if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
+          if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
+          if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
+          if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
+          if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
+        } else if (!ocrRes.ok) {
+          const errMsg = ocrBody.error || `HTTP ${ocrRes.status}`
+          toast.error(`スキャン失敗: ${errMsg}`)
+          return
         }
       }
 
@@ -259,9 +264,10 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       if (filled > 0) {
         toast.success(`車検証から${filled}件の情報を自動入力しました`)
       } else {
-        toast.warning('車検証の情報を読み取れませんでした。手動で入力してください。')
+        toast.warning('文字は読み取れましたが項目を特定できませんでした。ブラウザのコンソールに詳細が表示されています。')
       }
     } catch (err) {
+      console.error('[vehicleScan] error:', err)
       toast.error(err instanceof Error ? err.message : 'スキャンに失敗しました')
     } finally {
       setVehicleScanLoading(false)
