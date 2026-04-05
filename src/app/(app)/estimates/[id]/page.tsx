@@ -84,14 +84,12 @@ export default function EstimateDetailPage({ params }: { params: Promise<{ id: s
                 編集
               </Button>
             </Link>
-            {(estimate.status === 'accepted' || estimate.status === 'sent') && (
-              <Link href={`/invoices/new?from_estimate=${id}`}>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <ArrowRightCircle className="w-3.5 h-3.5" />
-                  請求書へ変換
-                </Button>
-              </Link>
-            )}
+            <Link href={`/invoices/new?from_estimate=${id}`}>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <ArrowRightCircle className="w-3.5 h-3.5" />
+                請求書へ変換
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadPdf}>
               <Download className="w-3.5 h-3.5" />
               PDFダウンロード

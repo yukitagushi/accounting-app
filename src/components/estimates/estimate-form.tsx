@@ -11,7 +11,7 @@ import { InvoicePreview } from '@/components/invoices/invoice-preview'
 import { createEstimate, updateEstimate } from '@/lib/mock-data'
 import { CustomerSearch } from '@/components/shared/customer-search'
 import type { Estimate, EstimateLineItem, TaxMode, Customer } from '@/lib/types'
-import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car, Download, Wand2 } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Eye, EyeOff, ChevronDown, ChevronRight, Car, Download, Wand2, ScanLine, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ESTIMATE_TEMPLATES, calcWeightTax, type TemplateType } from '@/lib/estimate-templates'
@@ -42,6 +42,64 @@ function calcLineAmount(qty: number | '', price: number | ''): number {
   return (qty as number) * (price as number)
 }
 
+function parseVehicleRegistration(text: string): {
+  vehicleName?: string
+  vehicleNumber?: string
+  firstRegistration?: string
+  nextInspectionDate?: string
+  vehicleWeight?: string
+} {
+  const result: {
+    vehicleName?: string
+    vehicleNumber?: string
+    firstRegistration?: string
+    nextInspectionDate?: string
+    vehicleWeight?: string
+  } = {}
+
+  // 車名
+  const vehicleNameMatch = text.match(/車\s*名[\s:：　]*([^\s\n　]{2,10})/)
+  if (vehicleNameMatch) result.vehicleName = vehicleNameMatch[1]
+
+  // 車両番号（ナンバープレート: 地名 分類番号 ひらがな 連番）
+  const plateMatch = text.match(/([\u4e00-\u9fff]{1,4})\s*(\d{2,3})\s*([\u3041-\u3096])\s*(\d{4})/)
+  if (plateMatch) {
+    result.vehicleNumber = `${plateMatch[1]} ${plateMatch[2]} ${plateMatch[3]} ${plateMatch[4]}`
+  }
+
+  // 初度登録年月
+  const reiwaFirstReg = text.match(/初度登録年月[\s\S]{0,10}令和\s*(\d+)年\s*(\d+)月/)
+  const heiseiFirstReg = text.match(/初度登録年月[\s\S]{0,10}平成\s*(\d+)年\s*(\d+)月/)
+  const showaFirstReg = text.match(/初度登録年月[\s\S]{0,10}昭和\s*(\d+)年\s*(\d+)月/)
+  if (reiwaFirstReg) {
+    result.firstRegistration = `R${reiwaFirstReg[1]}/${reiwaFirstReg[2]}`
+  } else if (heiseiFirstReg) {
+    result.firstRegistration = `H${heiseiFirstReg[1]}/${heiseiFirstReg[2]}`
+  } else if (showaFirstReg) {
+    result.firstRegistration = `S${showaFirstReg[1]}/${showaFirstReg[2]}`
+  }
+
+  // 有効期間の満了する日（次回車検日）
+  const convertJapaneseDate = (era: string, year: string, month: string, day: string): string => {
+    let baseYear = 0
+    if (era === '令和') baseYear = 2018
+    else if (era === '平成') baseYear = 1988
+    else if (era === '昭和') baseYear = 1925
+    const y = baseYear + Number(year)
+    return `${y}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  const expiryMatch = text.match(/有効期間[\s\S]{0,20}(令和|平成|昭和)\s*(\d+)年\s*(\d+)月\s*(\d+)日/)
+  if (expiryMatch) {
+    result.nextInspectionDate = convertJapaneseDate(expiryMatch[1], expiryMatch[2], expiryMatch[3], expiryMatch[4])
+  }
+
+  // 車両重量（kg）
+  const weightMatch = text.match(/車両重量[\s:：　]*(\d+)\s*(?:kg|ｋｇ)/i)
+  if (weightMatch) result.vehicleWeight = weightMatch[1]
+
+  return result
+}
+
 export function EstimateForm({ initialData, mode }: EstimateFormProps) {
   const router = useRouter()
   const today = new Date().toISOString().slice(0, 10)
@@ -60,6 +118,8 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
   const [saving, setSaving] = useState(false)
   const [showMobilePreview, setShowMobilePreview] = useState(false)
   const [showVehicleInfo, setShowVehicleInfo] = useState(!!initialData?.vehicle_name)
+  const [vehicleScanLoading, setVehicleScanLoading] = useState(false)
+  const vehicleScanInputRef = useRef<HTMLInputElement>(null)
 
   // Template auto-fill state
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null)
@@ -120,6 +180,40 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
       if (customer.vehicle_model) setVehicleName(customer.vehicle_model)
       if (customer.vehicle_number) setVehicleNumber(customer.vehicle_number)
       if (customer.vehicle_inspection_date) setNextInspectionDate(customer.vehicle_inspection_date)
+    }
+  }
+
+  async function handleVehicleScan(file: File) {
+    setVehicleScanLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/ocr', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'OCR失敗')
+      }
+      const { text } = await res.json()
+      const parsed = parseVehicleRegistration(text)
+
+      setShowVehicleInfo(true)
+      let filled = 0
+      if (parsed.vehicleName) { setVehicleName(parsed.vehicleName); filled++ }
+      if (parsed.vehicleNumber) { setVehicleNumber(parsed.vehicleNumber); filled++ }
+      if (parsed.firstRegistration) { setFirstRegistration(parsed.firstRegistration); filled++ }
+      if (parsed.nextInspectionDate) { setNextInspectionDate(parsed.nextInspectionDate); filled++ }
+      if (parsed.vehicleWeight) { setVehicleWeightStr(parsed.vehicleWeight); filled++ }
+
+      if (filled > 0) {
+        toast.success(`車検証から${filled}件の情報を自動入力しました`)
+      } else {
+        toast.warning('車検証の情報を読み取れませんでした。手動で入力してください。')
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'スキャンに失敗しました')
+    } finally {
+      setVehicleScanLoading(false)
+      if (vehicleScanInputRef.current) vehicleScanInputRef.current.value = ''
     }
   }
 
@@ -449,19 +543,46 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
 
       {/* Vehicle Info (collapsible) */}
       <div className="bg-white rounded-xl border border-gray-200">
-        <button
-          type="button"
-          onClick={() => setShowVehicleInfo(!showVehicleInfo)}
-          className="w-full flex items-center justify-between p-5 text-left"
-        >
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <button
+            type="button"
+            onClick={() => setShowVehicleInfo(!showVehicleInfo)}
+            className="flex items-center gap-2 text-left"
+          >
             <Car className="w-4 h-4 text-gray-500" />
             <h2 className="text-sm font-semibold text-gray-700">車両情報</h2>
+            {showVehicleInfo ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          </button>
+          <div>
+            <input
+              ref={vehicleScanInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleVehicleScan(file)
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+              disabled={vehicleScanLoading}
+              onClick={() => vehicleScanInputRef.current?.click()}
+            >
+              {vehicleScanLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ScanLine className="w-3.5 h-3.5" />
+              )}
+              車検証をスキャン
+            </Button>
           </div>
-          {showVehicleInfo ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-        </button>
+        </div>
         {showVehicleInfo && (
-          <div className="px-5 pb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="px-5 pb-5 pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>車名</Label>
               <Input value={vehicleName} onChange={(e) => setVehicleName(e.target.value)} placeholder="例: アルファード" />
