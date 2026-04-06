@@ -21,6 +21,7 @@ import {
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportCreditCardTransactions } from '@/lib/csv-export'
 import { useBranchStore } from '@/hooks/use-branch'
+import { AccountingTabs } from '@/components/shared/accounting-tabs'
 
 function formatCurrency(val: number): string {
   return '¥' + val.toLocaleString('ja-JP')
@@ -114,6 +115,8 @@ export default function CreditCardPage() {
           </>
         }
       />
+
+      <AccountingTabs active="credit-card" />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

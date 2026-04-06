@@ -1,25 +1,16 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
 import { getMockTrialBalance } from '@/lib/mock-data'
 import { ACCOUNT_CATEGORIES } from '@/lib/constants'
 import type { AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { AccountingTabs } from '@/components/shared/accounting-tabs'
 import { CheckCircle, XCircle, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportTrialBalance } from '@/lib/csv-export'
-
-type Tab = 'trial-balance' | 'accounts' | 'credit-card'
-
-const TABS: { key: Tab; label: string; href: string }[] = [
-  { key: 'trial-balance', label: '試算表', href: '/accounting' },
-  { key: 'accounts', label: '勘定科目', href: '/accounting/accounts' },
-  { key: 'credit-card', label: 'クレジットカード', href: '/accounting/credit-card' },
-]
 
 const CATEGORY_ORDER: AccountCategory[] = ['assets', 'liabilities', 'equity', 'revenue', 'expense']
 
@@ -73,23 +64,7 @@ export default function AccountingPage() {
         }
       />
 
-      {/* Sub-navigation Tabs */}
-      <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 mb-6 w-fit">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.key}
-            href={tab.href}
-            className={cn(
-              'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
-              tab.key === 'trial-balance'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      <AccountingTabs active="trial-balance" />
 
       {/* Balance Check Indicator */}
       <div

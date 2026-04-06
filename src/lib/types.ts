@@ -156,6 +156,32 @@ export type Payment = {
   invoice?: Invoice
 }
 
+// Sales Ledger Entry (売上台帳)
+export type SalesLedgerEntry = {
+  id: string; branch_id: string; entry_date: string
+  customer_name: string; description: string
+  quantity: number; unit_price: number
+  income_amount: number; payment_amount: number
+  memo: string; line_order: number
+  created_at: string; updated_at: string
+}
+
+// Transfer Voucher (振替伝票)
+export type TransferVoucher = {
+  id: string; branch_id: string; voucher_number: string
+  voucher_date: string; memo: string; total_amount: number
+  created_at: string; updated_at: string
+  lines?: Partial<TransferVoucherLine>[]
+}
+
+export type TransferVoucherLine = {
+  id: string; voucher_id: string
+  debit_account: string; debit_amount: number
+  credit_account: string; credit_amount: number
+  description: string; line_order: number
+  created_at: string
+}
+
 // Inspection Journal Entry
 export type InspectionJournalEntryPurpose = 'advance' | 'invoice' | 'payment' | 'settlement'
 

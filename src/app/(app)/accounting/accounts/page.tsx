@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import Link from 'next/link'
 import { PageHeader } from '@/components/shared/page-header'
+import { AccountingTabs } from '@/components/shared/accounting-tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -193,27 +193,7 @@ export default function AccountsPage() {
         }
       />
 
-      {/* Sub-navigation Tabs */}
-      <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 mb-6 w-fit">
-        {[
-          { label: '試算表', href: '/accounting' },
-          { label: '勘定科目', href: '/accounting/accounts', active: true },
-          { label: 'クレジットカード', href: '/accounting/credit-card' },
-        ].map((tab) => (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={cn(
-              'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
-              tab.active
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      <AccountingTabs active="accounts" />
 
       {/* Account Groups */}
       <div className="space-y-3">

@@ -7,6 +7,7 @@ import type {
   Estimate, EstimateLineItem, Invoice, InvoiceLineItem,
   VehicleInspection, CreditCardTransaction, AppSettings,
   Payment, InspectionJournalEntry,
+  SalesLedgerEntry, TransferVoucher, TransferVoucherLine,
 } from '@/lib/types'
 
 function db() {
@@ -479,6 +480,118 @@ export async function createInspectionJournalEntry(input: { inspection_id: strin
   const { data, error } = await db().from('inspection_journal_entries').insert(input).select().single()
   if (error) throw error
   return data as InspectionJournalEntry
+}
+
+// ── Sales Ledger ────────────────────────────────────────────────────────────
+
+export async function getSalesLedgerEntries(branchId?: string): Promise<SalesLedgerEntry[]> {
+  let q = db().from('sales_ledger_entries').select('*').order('entry_date', { ascending: true }).order('line_order', { ascending: true })
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data } = await q
+  return (data ?? []) as SalesLedgerEntry[]
+}
+
+export async function createSalesLedgerEntry(input: Partial<SalesLedgerEntry>): Promise<SalesLedgerEntry> {
+  const { data, error } = await db().from('sales_ledger_entries').insert({
+    branch_id: input.branch_id ?? '00000000-0000-0000-0000-000000000001',
+    entry_date: input.entry_date,
+    customer_name: input.customer_name ?? '',
+    description: input.description ?? '',
+    quantity: input.quantity ?? 1,
+    unit_price: input.unit_price ?? 0,
+    income_amount: input.income_amount ?? 0,
+    payment_amount: input.payment_amount ?? 0,
+    memo: input.memo ?? '',
+    line_order: input.line_order ?? 0,
+  }).select().single()
+  if (error) throw error
+  return data as SalesLedgerEntry
+}
+
+export async function updateSalesLedgerEntry(id: string, input: Partial<SalesLedgerEntry>): Promise<SalesLedgerEntry | null> {
+  const { data } = await db().from('sales_ledger_entries').update({ ...input, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  return data as SalesLedgerEntry | null
+}
+
+export async function deleteSalesLedgerEntry(id: string): Promise<boolean> {
+  const { error } = await db().from('sales_ledger_entries').delete().eq('id', id)
+  return !error
+}
+
+// ── Transfer Vouchers ───────────────────────────────────────────────────────
+
+export async function getTransferVouchers(branchId?: string): Promise<TransferVoucher[]> {
+  let q = db().from('transfer_vouchers').select('*, lines:transfer_voucher_lines(*)').order('voucher_date', { ascending: false })
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data } = await q
+  return (data ?? []) as TransferVoucher[]
+}
+
+export async function getTransferVoucher(id: string): Promise<TransferVoucher | null> {
+  const { data } = await db().from('transfer_vouchers').select('*, lines:transfer_voucher_lines(*)').eq('id', id).single()
+  return data as TransferVoucher | null
+}
+
+export async function createTransferVoucher(input: Partial<TransferVoucher> & { lines?: Partial<TransferVoucherLine>[] }): Promise<TransferVoucher> {
+  const { lines, ...vData } = input
+  const { count } = await db().from('transfer_vouchers').select('*', { count: 'exact', head: true })
+  const num = String((count ?? 0) + 1).padStart(3, '0')
+
+  const { data: voucher, error } = await db().from('transfer_vouchers').insert({
+    branch_id: vData.branch_id ?? '00000000-0000-0000-0000-000000000001',
+    voucher_number: vData.voucher_number || `TV-${new Date().getFullYear()}-${num}`,
+    voucher_date: vData.voucher_date,
+    memo: vData.memo ?? '',
+    total_amount: vData.total_amount ?? 0,
+  }).select().single()
+  if (error) throw error
+
+  if (lines && lines.length > 0) {
+    const { error: linesError } = await db().from('transfer_voucher_lines').insert(
+      lines.map((l) => ({
+        voucher_id: voucher.id,
+        debit_account: l.debit_account ?? '',
+        debit_amount: l.debit_amount ?? 0,
+        credit_account: l.credit_account ?? '',
+        credit_amount: l.credit_amount ?? 0,
+        description: l.description ?? '',
+        line_order: l.line_order ?? 0,
+      }))
+    )
+    if (linesError) throw linesError
+  }
+
+  return { ...voucher, lines: [] } as TransferVoucher
+}
+
+export async function updateTransferVoucher(id: string, input: Partial<TransferVoucher> & { lines?: Partial<TransferVoucherLine>[] }): Promise<TransferVoucher | null> {
+  const { lines, ...vData } = input
+  const { data } = await db().from('transfer_vouchers').update({ ...vData, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (!data) return null
+
+  if (lines) {
+    await db().from('transfer_voucher_lines').delete().eq('voucher_id', id)
+    if (lines.length > 0) {
+      await db().from('transfer_voucher_lines').insert(
+        lines.map((l) => ({
+          voucher_id: id,
+          debit_account: l.debit_account ?? '',
+          debit_amount: l.debit_amount ?? 0,
+          credit_account: l.credit_account ?? '',
+          credit_amount: l.credit_amount ?? 0,
+          description: l.description ?? '',
+          line_order: l.line_order ?? 0,
+        }))
+      )
+    }
+  }
+
+  return data as TransferVoucher
+}
+
+export async function deleteTransferVoucher(id: string): Promise<boolean> {
+  const { error } = await db().from('transfer_vouchers').delete().eq('id', id)
+  return !error
 }
 
 // ── Invoice Payment Helpers ─────────────────────────────────────────────────
