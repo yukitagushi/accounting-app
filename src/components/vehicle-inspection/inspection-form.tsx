@@ -166,7 +166,7 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
     if (!initialData) return
     setGeneratingJournal(true)
     try {
-      const accounts = await getAccounts()
+      const accounts = await getAccounts(initialData.branch_id)
       const tatekaekAccount = accounts.find((a) => a.code === '1400')
       const cashAccount = accounts.find((a) => a.code === '1000')
 
@@ -213,6 +213,7 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
       }
 
       const entry = await createJournalEntry({
+        branch_id: initialData.branch_id,
         entry_date: inspectionDate || new Date().toISOString().slice(0, 10),
         description: `車検立替 ${customerName} ${vehicleNumber}`,
         entry_type: 'vehicle_inspection',
@@ -244,8 +245,8 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
     if (!initialData) return
     setGeneratingInvoice(true)
     try {
-      const accounts = await getAccounts()
-      const arAccount = accounts.find((a) => a.code === '1100') // 売掛金 (note: 1200 in spec but types show 1100 for 売掛金)
+      const accounts = await getAccounts(initialData.branch_id)
+      const arAccount = accounts.find((a) => a.code === '1100') // 売掛金
       const tatekaekAccount = accounts.find((a) => a.code === '1400')
 
       if (!arAccount || !tatekaekAccount) {
@@ -391,6 +392,7 @@ export function InspectionForm({ initialData, mode }: InspectionFormProps) {
 
       if (invoiceJournalLines.length > 1) {
         const invoiceEntry = await createJournalEntry({
+          branch_id: initialData.branch_id,
           entry_date: issueDate,
           description: `車検請求書 ${initialData.customer_name} ${initialData.vehicle_number}`,
           entry_type: 'vehicle_inspection',

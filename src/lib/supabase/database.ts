@@ -29,8 +29,9 @@ export async function getCustomer(id: string): Promise<Customer | null> {
 
 export async function searchCustomers(keyword: string): Promise<Customer[]> {
   if (!keyword.trim()) return []
+  const escaped = keyword.replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/[,().]/g, '')
   const { data } = await db().from('customers').select('*').or(
-    `name.ilike.%${keyword}%,name_kana.ilike.%${keyword}%,customer_code.ilike.%${keyword}%,address.ilike.%${keyword}%,phone.ilike.%${keyword}%,contact_person.ilike.%${keyword}%`
+    `name.ilike.%${escaped}%,name_kana.ilike.%${escaped}%,customer_code.ilike.%${escaped}%,address.ilike.%${escaped}%,phone.ilike.%${escaped}%,contact_person.ilike.%${escaped}%`
   )
   return data ?? []
 }
@@ -499,11 +500,20 @@ export async function updateInvoicePaidAmount(invoiceId: string): Promise<void> 
 export async function searchInvoicesByPaymentKeyword(keyword: string): Promise<Invoice[]> {
   // Parse customer name from patterns like "田中車検代入金", "田中 入金", "田中"
   const cleaned = keyword.replace(/車検代?入金|入金|代金/g, '').trim()
-  if (!cleaned) return []
+  if (!cleaned) {
+    // If no customer name extracted, return all unpaid invoices (limited)
+    const { data } = await db().from('invoices')
+      .select('*, line_items:invoice_line_items(*)')
+      .in('status', ['sent', 'partial', 'overdue'])
+      .order('issue_date', { ascending: false })
+      .limit(10)
+    return (data ?? []) as Invoice[]
+  }
 
+  const escaped = cleaned.replace(/%/g, '\\%').replace(/_/g, '\\_')
   const { data } = await db().from('invoices')
     .select('*, line_items:invoice_line_items(*)')
-    .ilike('customer_name', `%${cleaned}%`)
+    .ilike('customer_name', `%${escaped}%`)
     .in('status', ['sent', 'partial', 'overdue'])
     .order('issue_date', { ascending: false })
   return (data ?? []) as Invoice[]

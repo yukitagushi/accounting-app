@@ -169,8 +169,8 @@ export default function DashboardPage() {
     ? ((thisMonthNetRevenue - prevMonthNetRevenue) / prevMonthNetRevenue) * 100
     : 0
 
-  const unpaidInvoices = invoices.filter((i) => i.status === 'sent' || i.status === 'overdue')
-  const unpaidTotal = unpaidInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
+  const unpaidInvoices = invoices.filter((i) => ['sent', 'overdue', 'partial'].includes(i.status))
+  const unpaidTotal = unpaidInvoices.reduce((s, i) => s + ((i.total ?? 0) - (i.paid_amount ?? 0)), 0)
 
   const thisMonthEntries = journalEntries.filter((e) => e.entry_date?.startsWith(thisMonthStr))
   const activeInspections = vehicleInspections.filter((vi) => vi.status === 'pending' || vi.status === 'in_progress')
