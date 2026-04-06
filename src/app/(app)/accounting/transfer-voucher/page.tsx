@@ -1,15 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PageHeader } from '@/components/shared/page-header'
 import { AccountingTabs } from '@/components/shared/accounting-tabs'
-import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { useBranchStore } from '@/hooks/use-branch'
 import {
   getTransferVouchers,
   createTransferVoucher,
-  updateTransferVoucher,
+  searchUnsettledVouchers,
+  settleVoucher,
   deleteTransferVoucher,
 } from '@/lib/supabase/database'
 import type { TransferVoucher, TransferVoucherLine } from '@/lib/types'
@@ -18,20 +18,18 @@ import { toast } from 'sonner'
 import {
   Plus,
   Trash2,
-  X,
-  CheckCircle,
+  Search,
+  CheckCircle2,
   XCircle,
+  ArrowRightLeft,
   FileText,
-  ChevronLeft,
+  CreditCard,
+  ClipboardCheck,
+  CalendarDays,
+  ChevronRight,
 } from 'lucide-react'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
-}
 
 function todayString(): string {
   return new Date().toISOString().split('T')[0]
@@ -42,388 +40,852 @@ function currentMonthString(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+function formatCurrency(val: number): string {
+  return `¥${val.toLocaleString('ja-JP')}`
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function firstDayOfMonth(monthStr: string): string {
+  return `${monthStr}-01`
+}
+
+function lastDayOfMonth(monthStr: string): string {
+  const [y, m] = monthStr.split('-').map(Number)
+  const last = new Date(y, m, 0)
+  return `${y}-${String(m).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = 'list' | 'create' | 'edit'
+type InternalTab = 'monthly' | 'debit-entry' | 'payment' | 'balance-check'
 
-interface FormLine {
-  id?: string
-  debit_amount: string
-  debit_account: string
+interface DebitFormLine {
   description: string
-  credit_account: string
-  credit_amount: string
+  amount: string
 }
 
-interface VoucherForm {
-  voucher_date: string
-  memo: string
-  lines: FormLine[]
-}
+const EMPTY_LINE = (): DebitFormLine => ({ description: '', amount: '' })
 
-const EMPTY_LINE = (): FormLine => ({
-  debit_amount: '',
-  debit_account: '',
-  description: '',
-  credit_account: '',
-  credit_amount: '',
-})
+const TAB_ITEMS: { key: InternalTab; label: string; icon: React.ElementType }[] = [
+  { key: 'monthly', label: '月次一覧', icon: CalendarDays },
+  { key: 'debit-entry', label: '借方登録', icon: FileText },
+  { key: 'payment', label: '入金処理', icon: CreditCard },
+  { key: 'balance-check', label: '照合確認', icon: ClipboardCheck },
+]
 
-const INITIAL_FORM = (): VoucherForm => ({
-  voucher_date: todayString(),
-  memo: '',
-  lines: Array.from({ length: 5 }, EMPTY_LINE),
-})
+// ── Status Badge ─────────────────────────────────────────────────────────────
 
-function formToSavePayload(form: VoucherForm, branchId?: string) {
-  const activeLines = form.lines.filter(
-    (l) =>
-      l.debit_amount !== '' ||
-      l.debit_account !== '' ||
-      l.description !== '' ||
-      l.credit_account !== '' ||
-      l.credit_amount !== ''
+function StatusBadge({ status }: { status: 'unsettled' | 'settled' }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+        status === 'settled'
+          ? 'bg-green-50 text-green-700 border-green-200'
+          : 'bg-amber-50 text-amber-700 border-amber-200'
+      )}
+    >
+      {status === 'settled' ? (
+        <>
+          <CheckCircle2 className="w-3 h-3" />
+          入金済
+        </>
+      ) : (
+        <>
+          <XCircle className="w-3 h-3" />
+          未入金
+        </>
+      )}
+    </span>
   )
-  const lines = activeLines.map((l, idx) => ({
-    id: l.id,
-    debit_amount: parseFloat(l.debit_amount) || 0,
-    debit_account: l.debit_account,
-    description: l.description,
-    credit_account: l.credit_account,
-    credit_amount: parseFloat(l.credit_amount) || 0,
-    line_order: idx + 1,
-  }))
-  const total = lines.reduce((s, l) => s + l.debit_amount, 0)
-  return {
-    branch_id: branchId,
-    voucher_date: form.voucher_date,
-    memo: form.memo,
-    total_amount: total,
-    lines: lines as Partial<TransferVoucherLine>[],
-  }
 }
 
-function voucherToForm(v: TransferVoucher): VoucherForm {
-  const lines: FormLine[] = (v.lines ?? []).map((l) => ({
-    id: l.id,
-    debit_amount: (l.debit_amount ?? 0) > 0 ? String(l.debit_amount) : '',
-    debit_account: l.debit_account ?? '',
-    description: l.description ?? '',
-    credit_account: l.credit_account ?? '',
-    credit_amount: (l.credit_amount ?? 0) > 0 ? String(l.credit_amount) : '',
-  }))
-  // Pad to at least 5 rows
-  while (lines.length < 5) lines.push(EMPTY_LINE())
-  return {
-    voucher_date: v.voucher_date,
-    memo: v.memo ?? '',
-    lines,
-  }
-}
-
-// ── Sub-components ───────────────────────────────────────────────────────────
+// ── Voucher Card ─────────────────────────────────────────────────────────────
 
 function VoucherCard({
   voucher,
-  onClick,
   onDelete,
+  showLines,
 }: {
   voucher: TransferVoucher
-  onClick: () => void
-  onDelete: () => void
+  onDelete?: () => void
+  showLines?: boolean
 }) {
   return (
-    <div
-      className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer relative group"
-      onClick={onClick}
-    >
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow relative group">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-              No.{voucher.voucher_number}
+            <span className="text-sm font-bold text-gray-900">
+              {voucher.customer_name}
             </span>
-            <span className="text-xs text-gray-500">{formatDate(voucher.voucher_date)}</span>
+            <StatusBadge status={voucher.status} />
           </div>
-          {voucher.memo && (
-            <p className="text-sm text-gray-700 truncate">{voucher.memo}</p>
-          )}
-          {!voucher.memo && (
-            <p className="text-sm text-gray-400 italic">摘要なし</p>
-          )}
+          <p className="text-sm text-gray-600 truncate">{voucher.description}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatDate(voucher.voucher_date)}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm font-bold tabular-nums text-gray-900">
-            ¥{voucher.total_amount.toLocaleString('ja-JP')}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {(voucher.lines?.length ?? 0)} 行
+          <p className="text-base font-bold tabular-nums text-gray-900">
+            {formatCurrency(voucher.total_amount)}
           </p>
         </div>
       </div>
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-        className="absolute top-3 right-3 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 hover:bg-red-50"
-        title="削除"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
+      {showLines && voucher.lines && voucher.lines.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <table className="w-full text-sm">
+            <tbody>
+              {voucher.lines
+                .sort((a, b) => a.line_order - b.line_order)
+                .map((line, i) => (
+                  <tr key={i} className="text-gray-600">
+                    <td className="py-0.5">{line.description}</td>
+                    <td className="py-0.5 text-right tabular-nums">
+                      {formatCurrency(line.amount)}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="absolute top-3 right-3 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 hover:bg-red-50"
+          title="削除"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   )
 }
 
-// ── Voucher Form (paper-style) ────────────────────────────────────────────────
+// ── Tab 1: Monthly Overview ──────────────────────────────────────────────────
 
-function VoucherFormView({
-  form,
-  setForm,
-  editingVoucher,
-  onSave,
-  onCancel,
-  saving,
+function MonthlyOverview({
+  branchId,
+  refreshKey,
 }: {
-  form: VoucherForm
-  setForm: React.Dispatch<React.SetStateAction<VoucherForm>>
-  editingVoucher: TransferVoucher | null
-  onSave: () => void
-  onCancel: () => void
-  saving: boolean
+  branchId?: string
+  refreshKey: number
 }) {
-  const debitTotal = form.lines.reduce(
-    (s, l) => s + (parseFloat(l.debit_amount) || 0),
-    0
-  )
-  const creditTotal = form.lines.reduce(
-    (s, l) => s + (parseFloat(l.credit_amount) || 0),
-    0
-  )
-  const isBalanced = Math.abs(debitTotal - creditTotal) < 0.01
+  const [month, setMonth] = useState(currentMonthString())
+  const [debits, setDebits] = useState<TransferVoucher[]>([])
+  const [credits, setCredits] = useState<TransferVoucher[]>([])
+  const [allDebits, setAllDebits] = useState<TransferVoucher[]>([])
+  const [loading, setLoading] = useState(true)
 
-  function updateLine(idx: number, field: keyof FormLine, value: string) {
-    setForm((prev) => {
-      const lines = [...prev.lines]
-      lines[idx] = { ...lines[idx], [field]: value }
-      return { ...prev, lines }
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [d, c] = await Promise.all([
+        getTransferVouchers(branchId, 'debit'),
+        getTransferVouchers(branchId, 'credit'),
+      ])
+      setAllDebits(d)
+
+      const first = firstDayOfMonth(month)
+      const last = lastDayOfMonth(month)
+      setDebits(d.filter((v) => v.voucher_date >= first && v.voucher_date <= last))
+      setCredits(c.filter((v) => v.voucher_date >= first && v.voucher_date <= last))
+    } catch {
+      toast.error('データの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, month, refreshKey])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const carryoverItems = allDebits.filter(
+    (v) => v.voucher_date < firstDayOfMonth(month) && v.status === 'unsettled'
+  )
+
+  const debitTotal = debits.reduce((s, v) => s + v.total_amount, 0) +
+    carryoverItems.reduce((s, v) => s + v.total_amount, 0)
+  const creditTotal = credits.reduce((s, v) => s + v.total_amount, 0)
+  const unsettledCount = debits.filter((v) => v.status === 'unsettled').length + carryoverItems.length
+
+  return (
+    <div className="space-y-4">
+      {/* Month picker */}
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-600 shrink-0">対象月:</label>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 rounded-xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Carryover section */}
+          {carryoverItems.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowRightLeft className="w-4 h-4 text-orange-600" />
+                <h3 className="text-sm font-bold text-orange-800">前月繰越</h3>
+              </div>
+              <p className="text-sm text-orange-700">
+                {carryoverItems.length}件 {formatCurrency(carryoverItems.reduce((s, v) => s + v.total_amount, 0))}
+              </p>
+              <div className="mt-3 space-y-2">
+                {carryoverItems.map((v) => (
+                  <div key={v.id} className="bg-white/80 rounded-lg border border-orange-100 p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">{v.customer_name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{v.description}</span>
+                      </div>
+                      <span className="text-sm font-bold tabular-nums text-gray-900">
+                        {formatCurrency(v.total_amount)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Split layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Debit list */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                借方一覧
+              </h3>
+              {debits.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-400">
+                  この月の借方伝票はありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {debits.map((v) => (
+                    <VoucherCard key={v.id} voucher={v} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Credit list */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-500" />
+                貸方一覧
+              </h3>
+              {credits.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-400">
+                  この月の貸方伝票はありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {credits.map((v) => (
+                    <VoucherCard key={v.id} voucher={v} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="bg-gray-50 border-t-2 border-gray-300 rounded-xl p-4">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-6">
+                <span className="text-gray-600">
+                  借方合計: <strong className="text-gray-900 tabular-nums">{formatCurrency(debitTotal)}</strong>
+                </span>
+                <span className="text-gray-600">
+                  貸方合計: <strong className="text-gray-900 tabular-nums">{formatCurrency(creditTotal)}</strong>
+                </span>
+              </div>
+              <span className="text-gray-600">
+                未照合: <strong className="text-amber-700">{unsettledCount}件</strong>
+              </span>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Tab 2: Debit Entry Form ──────────────────────────────────────────────────
+
+function DebitEntryForm({
+  branchId,
+  onSaved,
+}: {
+  branchId?: string
+  onSaved: () => void
+}) {
+  const [date, setDate] = useState(todayString())
+  const [customerName, setCustomerName] = useState('')
+  const [description, setDescription] = useState('')
+  const [lines, setLines] = useState<DebitFormLine[]>(() =>
+    Array.from({ length: 4 }, EMPTY_LINE)
+  )
+  const [saving, setSaving] = useState(false)
+
+  const total = lines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+
+  function updateLine(idx: number, field: keyof DebitFormLine, value: string) {
+    setLines((prev) => {
+      const next = [...prev]
+      next[idx] = { ...next[idx], [field]: value }
+      return next
     })
   }
 
   function removeLine(idx: number) {
-    setForm((prev) => ({
-      ...prev,
-      lines: prev.lines.filter((_, i) => i !== idx),
-    }))
+    setLines((prev) => prev.filter((_, i) => i !== idx))
   }
 
   function addLine() {
-    setForm((prev) => ({ ...prev, lines: [...prev.lines, EMPTY_LINE()] }))
+    setLines((prev) => [...prev, EMPTY_LINE()])
   }
 
-  const dateParts = form.voucher_date
-    ? (() => {
-        const d = new Date(form.voucher_date)
-        return {
-          year: d.getFullYear(),
-          month: d.getMonth() + 1,
-          day: d.getDate(),
-        }
-      })()
-    : { year: '—', month: '—', day: '—' }
+  async function handleSave() {
+    if (!customerName.trim()) {
+      toast.error('顧客名を入力してください')
+      return
+    }
+
+    const activeLines = lines.filter((l) => l.description.trim() || l.amount.trim())
+    if (activeLines.length === 0) {
+      toast.error('少なくとも1行入力してください')
+      return
+    }
+
+    setSaving(true)
+    try {
+      await createTransferVoucher({
+        branch_id: branchId,
+        voucher_date: date,
+        customer_name: customerName.trim(),
+        description: description.trim(),
+        side: 'debit',
+        status: 'unsettled',
+        total_amount: total,
+        memo: '',
+        lines: activeLines.map((l, idx) => ({
+          description: l.description.trim(),
+          amount: parseInt(l.amount, 10) || 0,
+          line_order: idx + 1,
+        })),
+      })
+      toast.success('借方伝票を登録しました')
+      setCustomerName('')
+      setDescription('')
+      setDate(todayString())
+      setLines(Array.from({ length: 4 }, EMPTY_LINE))
+      onSaved()
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Paper form card */}
-      <div className="bg-white rounded-xl border border-gray-300 overflow-hidden shadow-sm">
-        {/* Form Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50">
-          <h2 className="text-lg font-bold tracking-wider text-gray-900">振替伝票</h2>
-          <div className="flex items-center gap-3 text-sm text-gray-600">
-            {editingVoucher && (
-              <span className="font-mono text-gray-500 text-xs">
-                No.{editingVoucher.voucher_number}
-              </span>
-            )}
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={form.voucher_date}
-                onChange={(e) => setForm((p) => ({ ...p, voucher_date: e.target.value }))}
-                className="h-7 rounded border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-              />
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                {dateParts.year}年{dateParts.month}月{dateParts.day}日
-              </span>
-            </div>
-          </div>
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <h3 className="text-base font-bold text-gray-900">借方伝票 新規登録</h3>
+
+        {/* Date */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">日付</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          />
         </div>
 
-        {/* Ledger Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[640px]">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-gray-300 text-center font-bold text-sm py-2 px-3 w-[18%]">
-                  金　額
-                </th>
-                <th className="border border-gray-300 text-center font-bold text-sm py-2 px-3 w-[20%]">
-                  借方科目
-                </th>
-                <th className="border border-gray-300 text-center font-bold text-sm py-2 px-3 w-[24%]">
-                  摘　要
-                </th>
-                <th className="border border-gray-300 text-center font-bold text-sm py-2 px-3 w-[20%]">
-                  貸方科目
-                </th>
-                <th className="border border-gray-300 text-center font-bold text-sm py-2 px-3 w-[18%]">
-                  金　額
-                </th>
-                <th className="border border-gray-300 bg-gray-100 py-2 w-8" aria-label="削除" />
-              </tr>
-            </thead>
-            <tbody>
-              {form.lines.map((line, idx) => (
-                <tr key={idx} className="group/row">
-                  <td className="border border-gray-300 p-0">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={line.debit_amount}
-                      onChange={(e) => updateLine(idx, 'debit_amount', e.target.value.replace(/[^0-9]/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50 text-right tabular-nums"
-                    />
-                  </td>
-                  <td className="border border-gray-300 p-0">
-                    <input
-                      type="text"
-                      value={line.debit_account}
-                      onChange={(e) => updateLine(idx, 'debit_account', e.target.value)}
-                      placeholder="例: 現金"
-                      className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50"
-                    />
-                  </td>
-                  <td className="border border-gray-300 p-0">
-                    <input
-                      type="text"
-                      value={line.description}
-                      onChange={(e) => updateLine(idx, 'description', e.target.value)}
-                      placeholder="摘要"
-                      className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50"
-                    />
-                  </td>
-                  <td className="border border-gray-300 p-0">
-                    <input
-                      type="text"
-                      value={line.credit_account}
-                      onChange={(e) => updateLine(idx, 'credit_account', e.target.value)}
-                      placeholder="例: 売上"
-                      className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50"
-                    />
-                  </td>
-                  <td className="border border-gray-300 p-0">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={line.credit_amount}
-                      onChange={(e) => updateLine(idx, 'credit_amount', e.target.value.replace(/[^0-9]/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50 text-right tabular-nums"
-                    />
-                  </td>
-                  <td className="border border-gray-300 p-0 w-8">
-                    <button
-                      onClick={() => removeLine(idx)}
-                      className="w-full h-full flex items-center justify-center py-2 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                      title="この行を削除"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </td>
+        {/* Customer name */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">顧客名</label>
+          <input
+            type="text"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="例: 木村"
+            className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">摘要</label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="例: ワゴンR車検"
+            className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          />
+        </div>
+
+        {/* Detail lines */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">内訳明細</label>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left font-medium text-gray-600 py-2 px-3 border-b border-gray-200">
+                    項目名
+                  </th>
+                  <th className="text-right font-medium text-gray-600 py-2 px-3 border-b border-gray-200 w-[140px]">
+                    金額
+                  </th>
+                  <th className="border-b border-gray-200 w-8" />
                 </tr>
-              ))}
+              </thead>
+              <tbody>
+                {lines.map((line, idx) => (
+                  <tr key={idx} className="border-t border-gray-100 hover:bg-blue-50/30 group/row">
+                    <td className="p-0">
+                      <input
+                        type="text"
+                        value={line.description}
+                        onChange={(e) => updateLine(idx, 'description', e.target.value)}
+                        placeholder="例: 検査"
+                        className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-blue-50/50"
+                      />
+                    </td>
+                    <td className="p-0">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={line.amount}
+                        onChange={(e) =>
+                          updateLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))
+                        }
+                        placeholder="0"
+                        className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-blue-50/50 text-right tabular-nums"
+                      />
+                    </td>
+                    <td className="p-0">
+                      <button
+                        onClick={() => removeLine(idx)}
+                        className="w-full h-full flex items-center justify-center py-2 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                        title="この行を削除"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {/* Total row */}
+                <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
+                  <td className="py-2.5 px-3 text-sm text-gray-700">合計</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-sm text-gray-900">
+                    {formatCurrency(total)}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-              {/* Totals row */}
-              <tr className="bg-gray-50 border-t-2 border-gray-400">
-                <td className="border border-gray-300 py-2.5 px-3 text-right tabular-nums font-bold text-sm">
-                  {debitTotal > 0 ? debitTotal.toLocaleString('ja-JP') : '—'}
-                </td>
-                <td className="border border-gray-300" />
-                <td className="border border-gray-300 text-center font-bold text-sm py-2.5 text-gray-700 tracking-widest">
-                  合　計
-                </td>
-                <td className="border border-gray-300" />
-                <td className="border border-gray-300 py-2.5 px-3 text-right tabular-nums font-bold text-sm">
-                  {creditTotal > 0 ? creditTotal.toLocaleString('ja-JP') : '—'}
-                </td>
-                <td className="border border-gray-300" />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* Below-table controls */}
-        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between bg-white">
           <button
             onClick={addLine}
-            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors mt-2"
           >
             <Plus className="w-3.5 h-3.5" />
             行追加
           </button>
-
-          {/* Balance indicator */}
-          <div
-            className={cn(
-              'flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border',
-              isBalanced && (debitTotal > 0 || creditTotal > 0)
-                ? 'bg-green-50 border-green-200 text-green-700'
-                : debitTotal === 0 && creditTotal === 0
-                ? 'bg-gray-50 border-gray-200 text-gray-500'
-                : 'bg-red-50 border-red-200 text-red-700'
-            )}
-          >
-            {isBalanced && (debitTotal > 0 || creditTotal > 0) ? (
-              <CheckCircle className="w-3.5 h-3.5" />
-            ) : debitTotal === 0 && creditTotal === 0 ? null : (
-              <XCircle className="w-3.5 h-3.5" />
-            )}
-            {isBalanced && (debitTotal > 0 || creditTotal > 0)
-              ? '貸借一致'
-              : debitTotal === 0 && creditTotal === 0
-              ? '未入力'
-              : `差額: ¥${Math.abs(debitTotal - creditTotal).toLocaleString('ja-JP')}`}
-          </div>
         </div>
       </div>
 
-      {/* Memo field */}
-      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">摘要・備考</label>
-        <textarea
-          value={form.memo}
-          onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
-          placeholder="伝票全体の備考を入力"
-          rows={2}
-          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none"
-        />
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <Button variant="outline" onClick={onCancel} disabled={saving}>
-          キャンセル
-        </Button>
+      {/* Save button */}
+      <div className="flex justify-end">
         <Button
-          onClick={onSave}
+          onClick={handleSave}
           disabled={saving}
           className="bg-indigo-600 hover:bg-indigo-700 text-white"
         >
           {saving ? '保存中...' : '保存'}
         </Button>
       </div>
+    </div>
+  )
+}
+
+// ── Tab 3: Payment Processing ────────────────────────────────────────────────
+
+function PaymentProcessing({
+  branchId,
+  onSettled,
+}: {
+  branchId?: string
+  onSettled: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<TransferVoucher[]>([])
+  const [searching, setSearching] = useState(false)
+  const [settledInfo, setSettledInfo] = useState<{ amount: number } | null>(null)
+  const [settlingId, setSettlingId] = useState<string | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const doSearch = useCallback(
+    async (keyword: string) => {
+      if (!keyword.trim()) {
+        setResults([])
+        return
+      }
+      setSearching(true)
+      try {
+        const data = await searchUnsettledVouchers(keyword.trim(), branchId)
+        setResults(data)
+      } catch {
+        toast.error('検索に失敗しました')
+      } finally {
+        setSearching(false)
+      }
+    },
+    [branchId]
+  )
+
+  function handleQueryChange(value: string) {
+    setQuery(value)
+    setSettledInfo(null)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      doSearch(value)
+    }, 300)
+  }
+
+  async function handleSettle(voucher: TransferVoucher) {
+    setSettlingId(voucher.id)
+    try {
+      const credit = await settleVoucher(voucher.id, branchId)
+      if (credit) {
+        toast.success('入金確認が完了しました')
+        setSettledInfo({ amount: voucher.total_amount })
+        setResults((prev) => prev.filter((v) => v.id !== voucher.id))
+        onSettled()
+      } else {
+        toast.error('入金処理に失敗しました')
+      }
+    } catch {
+      toast.error('入金処理に失敗しました')
+    } finally {
+      setSettlingId(null)
+    }
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          placeholder="顧客名で検索..."
+          className="h-10 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+        />
+      </div>
+
+      {/* Settlement confirmation */}
+      {settledInfo && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+          <div className="text-sm text-green-800">
+            <span className="font-bold">借方 {formatCurrency(settledInfo.amount)} = 貸方 {formatCurrency(settledInfo.amount)}</span>
+            <span className="ml-2">照合完了</span>
+          </div>
+        </div>
+      )}
+
+      {/* Search results */}
+      {searching ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      ) : query.trim() && results.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-400">
+          未入金の借方伝票が見つかりません
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {results.map((v) => (
+            <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-gray-900">{v.customer_name}</span>
+                    <span className="text-xs text-gray-500">{v.description}</span>
+                    <span className="text-xs text-gray-400">{formatDate(v.voucher_date)}</span>
+                  </div>
+
+                  {/* Detail lines */}
+                  {v.lines && v.lines.length > 0 && (
+                    <div className="mt-2 bg-gray-50 rounded-lg p-2.5">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {v.lines
+                            .sort((a, b) => a.line_order - b.line_order)
+                            .map((line, i) => (
+                              <tr key={i} className="text-gray-600">
+                                <td className="py-0.5 pr-4">{line.description}</td>
+                                <td className="py-0.5 text-right tabular-nums">
+                                  {formatCurrency(line.amount)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="mt-2">
+                    <span className="text-base font-bold tabular-nums text-gray-900">
+                      合計: {formatCurrency(v.total_amount)}
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => handleSettle(v)}
+                  disabled={settlingId === v.id}
+                  className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                  size="sm"
+                >
+                  {settlingId === v.id ? '処理中...' : '入金確認'}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tab 4: Balance Check ─────────────────────────────────────────────────────
+
+function BalanceCheck({
+  branchId,
+  refreshKey,
+}: {
+  branchId?: string
+  refreshKey: number
+}) {
+  const [month, setMonth] = useState(currentMonthString())
+  const [debits, setDebits] = useState<TransferVoucher[]>([])
+  const [credits, setCredits] = useState<TransferVoucher[]>([])
+  const [allDebits, setAllDebits] = useState<TransferVoucher[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [d, c] = await Promise.all([
+        getTransferVouchers(branchId, 'debit'),
+        getTransferVouchers(branchId, 'credit'),
+      ])
+      setAllDebits(d)
+
+      const first = firstDayOfMonth(month)
+      const last = lastDayOfMonth(month)
+      setDebits(d.filter((v) => v.voucher_date >= first && v.voucher_date <= last))
+      setCredits(c.filter((v) => v.voucher_date >= first && v.voucher_date <= last))
+    } catch {
+      toast.error('データの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, month, refreshKey])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const debitTotal = debits.reduce((s, v) => s + v.total_amount, 0)
+  const creditTotal = credits.reduce((s, v) => s + v.total_amount, 0)
+  const isBalanced = Math.abs(debitTotal - creditTotal) < 0.01 && debitTotal > 0
+
+  const settledDebits = debits.filter((v) => v.status === 'settled')
+  const unsettledDebits = debits.filter((v) => v.status === 'unsettled')
+
+  // Carryover to next month: unsettled items from selected month + carryover from before
+  const carryoverFromBefore = allDebits.filter(
+    (v) => v.voucher_date < firstDayOfMonth(month) && v.status === 'unsettled'
+  )
+  const nextMonthCarryover = [...unsettledDebits, ...carryoverFromBefore]
+
+  return (
+    <div className="space-y-4">
+      {/* Month picker */}
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-600 shrink-0">対象月:</label>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 mb-1">借方合計</p>
+              <p className="text-lg font-bold tabular-nums text-gray-900">
+                {formatCurrency(debitTotal)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 mb-1">貸方合計</p>
+              <p className="text-lg font-bold tabular-nums text-gray-900">
+                {formatCurrency(creditTotal)}
+              </p>
+            </div>
+            <div
+              className={cn(
+                'rounded-xl border p-4',
+                isBalanced
+                  ? 'bg-green-50 border-green-200'
+                  : debitTotal === 0 && creditTotal === 0
+                  ? 'bg-white border-gray-200'
+                  : 'bg-amber-50 border-amber-200'
+              )}
+            >
+              <p className="text-xs text-gray-500 mb-1">照合状況</p>
+              <p
+                className={cn(
+                  'text-lg font-bold',
+                  isBalanced ? 'text-green-700' : 'text-amber-700'
+                )}
+              >
+                {isBalanced ? '一致' : debitTotal === 0 && creditTotal === 0 ? '---' : '不一致'}
+              </p>
+            </div>
+          </div>
+
+          {/* Settled pairs */}
+          {settledDebits.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                照合済（入金済ペア）
+              </h3>
+              <div className="space-y-2">
+                {settledDebits.map((v) => {
+                  const matchingCredit = credits.find(
+                    (c) => c.linked_voucher_id === v.id || v.linked_voucher_id === c.id
+                  )
+                  return (
+                    <div
+                      key={v.id}
+                      className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="font-medium text-gray-900">{v.customer_name}</span>
+                          <span className="text-gray-500">{v.description}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm tabular-nums shrink-0">
+                        <span className="text-blue-700 font-medium">{formatCurrency(v.total_amount)}</span>
+                        <ChevronRight className="w-3 h-3 text-gray-400" />
+                        <span className="text-green-700 font-medium">
+                          {matchingCredit ? formatCurrency(matchingCredit.total_amount) : '---'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Unsettled items */}
+          {unsettledDebits.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                <XCircle className="w-4 h-4 text-amber-500" />
+                未入金
+              </h3>
+              <div className="space-y-2">
+                {unsettledDebits.map((v) => (
+                  <div
+                    key={v.id}
+                    className="bg-white rounded-xl border border-amber-200 p-3 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2 text-sm">
+                      <StatusBadge status="unsettled" />
+                      <span className="font-medium text-gray-900">{v.customer_name}</span>
+                      <span className="text-gray-500">{v.description}</span>
+                    </div>
+                    <span className="text-sm font-bold tabular-nums text-gray-900">
+                      {formatCurrency(v.total_amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Next month carryover */}
+          {nextMonthCarryover.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowRightLeft className="w-4 h-4 text-orange-600" />
+                <h3 className="text-sm font-bold text-orange-800">来月繰越</h3>
+              </div>
+              <p className="text-sm text-orange-700 mb-2">
+                {nextMonthCarryover.length}件 {formatCurrency(nextMonthCarryover.reduce((s, v) => s + v.total_amount, 0))}
+              </p>
+              <div className="space-y-1.5">
+                {nextMonthCarryover.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between text-sm text-orange-800">
+                    <span>{v.customer_name} - {v.description}</span>
+                    <span className="tabular-nums font-medium">{formatCurrency(v.total_amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -435,218 +897,59 @@ export default function TransferVoucherPage() {
   const branchId =
     currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
 
-  const [vouchers, setVouchers] = useState<TransferVoucher[]>([])
-  const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<ViewMode>('list')
-  const [editingVoucher, setEditingVoucher] = useState<TransferVoucher | null>(null)
-  const [form, setForm] = useState<VoucherForm>(INITIAL_FORM())
-  const [saving, setSaving] = useState(false)
-  const [monthFilter, setMonthFilter] = useState(currentMonthString())
+  const [activeTab, setActiveTab] = useState<InternalTab>('monthly')
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const loadVouchers = useCallback(() => {
-    setLoading(true)
-    getTransferVouchers(branchId)
-      .then((data) => {
-        setVouchers(data)
-        setLoading(false)
-      })
-      .catch(() => {
-        setLoading(false)
-        toast.error('データの取得に失敗しました')
-      })
-  }, [branchId])
-
-  useEffect(() => {
-    loadVouchers()
-  }, [loadVouchers])
-
-  // Filter by selected month
-  const filteredVouchers = vouchers.filter((v) => {
-    if (!monthFilter) return true
-    return v.voucher_date.startsWith(monthFilter)
-  })
-
-  function handleNewClick() {
-    setEditingVoucher(null)
-    setForm(INITIAL_FORM())
-    setView('create')
-  }
-
-  function handleEditClick(v: TransferVoucher) {
-    setEditingVoucher(v)
-    setForm(voucherToForm(v))
-    setView('edit')
-  }
-
-  function handleCancel() {
-    setView('list')
-    setEditingVoucher(null)
-    setForm(INITIAL_FORM())
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('この振替伝票を削除しますか？')) return
-    const ok = await deleteTransferVoucher(id)
-    if (ok) {
-      toast.success('振替伝票を削除しました')
-      loadVouchers()
-    } else {
-      toast.error('削除に失敗しました')
-    }
-  }
-
-  async function handleSave() {
-    const activeLines = form.lines.filter(
-      (l) =>
-        l.debit_amount !== '' ||
-        l.debit_account !== '' ||
-        l.description !== '' ||
-        l.credit_account !== '' ||
-        l.credit_amount !== ''
-    )
-
-    if (activeLines.length === 0) {
-      toast.error('少なくとも1行入力してください')
-      return
-    }
-
-    const debitTotal = activeLines.reduce((s, l) => s + (parseFloat(l.debit_amount) || 0), 0)
-    const creditTotal = activeLines.reduce((s, l) => s + (parseFloat(l.credit_amount) || 0), 0)
-
-    if (Math.abs(debitTotal - creditTotal) >= 0.01) {
-      toast.error('借方合計と貸方合計が一致しません')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const payload = formToSavePayload(form, branchId)
-
-      if (view === 'edit' && editingVoucher) {
-        const updated = await updateTransferVoucher(editingVoucher.id, payload)
-        if (updated) {
-          toast.success('振替伝票を更新しました')
-          loadVouchers()
-          setView('list')
-          setEditingVoucher(null)
-        } else {
-          toast.error('更新に失敗しました')
-        }
-      } else {
-        await createTransferVoucher(payload)
-        toast.success('振替伝票を作成しました')
-        loadVouchers()
-        setView('list')
-      }
-    } catch {
-      toast.error('保存に失敗しました')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
 
   return (
     <div>
       <PageHeader
         title="会計管理"
         description="振替伝票を管理します"
-        actions={
-          view === 'list' ? (
-            <Button
-              onClick={handleNewClick}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              新規作成
-            </Button>
-          ) : (
-            <button
-              onClick={handleCancel}
-              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              一覧に戻る
-            </button>
-          )
-        }
       />
 
       <AccountingTabs active="transfer-voucher" />
 
-      {/* List View */}
-      {view === 'list' && (
-        <div>
-          {/* Month filter */}
-          <div className="flex items-center gap-2 mb-5">
-            <label className="text-sm text-gray-600 shrink-0">対象月:</label>
-            <input
-              type="month"
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
-              className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-            />
-            {monthFilter && (
-              <button
-                onClick={() => setMonthFilter('')}
-                className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                クリア
-              </button>
-            )}
-          </div>
+      {/* Internal tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 w-fit overflow-x-auto">
+        {TAB_ITEMS.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
+                activeTab === tab.key
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+              )}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
 
-          {loading ? (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="space-y-3 p-4">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-16 rounded-lg bg-gray-100 animate-pulse"
-                  />
-                ))}
-              </div>
-            </div>
-          ) : filteredVouchers.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <EmptyState
-                icon={FileText}
-                title="振替伝票がありません"
-                description={
-                  monthFilter
-                    ? 'この月の振替伝票はまだ登録されていません'
-                    : '振替伝票がまだ登録されていません'
-                }
-                actionLabel="新規作成"
-                onAction={handleNewClick}
-              />
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredVouchers.map((v) => (
-                <VoucherCard
-                  key={v.id}
-                  voucher={v}
-                  onClick={() => handleEditClick(v)}
-                  onDelete={() => handleDelete(v.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Tab content */}
+      {activeTab === 'monthly' && (
+        <MonthlyOverview branchId={branchId} refreshKey={refreshKey} />
       )}
 
-      {/* Create / Edit View */}
-      {(view === 'create' || view === 'edit') && (
-        <VoucherFormView
-          form={form}
-          setForm={setForm}
-          editingVoucher={editingVoucher}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          saving={saving}
-        />
+      {activeTab === 'debit-entry' && (
+        <DebitEntryForm branchId={branchId} onSaved={triggerRefresh} />
+      )}
+
+      {activeTab === 'payment' && (
+        <PaymentProcessing branchId={branchId} onSettled={triggerRefresh} />
+      )}
+
+      {activeTab === 'balance-check' && (
+        <BalanceCheck branchId={branchId} refreshKey={refreshKey} />
       )}
     </div>
   )

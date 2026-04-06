@@ -167,19 +167,23 @@ export type SalesLedgerEntry = {
 }
 
 // Transfer Voucher (振替伝票)
+export type VoucherSide = 'debit' | 'credit'
+export type VoucherStatus = 'unsettled' | 'settled'
+
 export type TransferVoucher = {
   id: string; branch_id: string; voucher_number: string
-  voucher_date: string; memo: string; total_amount: number
+  voucher_date: string; customer_name: string; description: string
+  side: VoucherSide; status: VoucherStatus
+  linked_voucher_id?: string | null
+  total_amount: number; memo: string
   created_at: string; updated_at: string
-  lines?: Partial<TransferVoucherLine>[]
+  lines?: TransferVoucherLine[]
 }
 
 export type TransferVoucherLine = {
-  id: string; voucher_id: string
-  debit_account: string; debit_amount: number
-  credit_account: string; credit_amount: number
-  description: string; line_order: number
-  created_at: string
+  id?: string; voucher_id?: string
+  description: string; amount: number
+  line_order: number; created_at?: string
 }
 
 // Inspection Journal Entry

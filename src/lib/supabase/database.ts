@@ -7,7 +7,7 @@ import type {
   Estimate, EstimateLineItem, Invoice, InvoiceLineItem,
   VehicleInspection, CreditCardTransaction, AppSettings,
   Payment, InspectionJournalEntry,
-  SalesLedgerEntry, TransferVoucher, TransferVoucherLine,
+  SalesLedgerEntry, TransferVoucher, TransferVoucherLine, VoucherSide,
 } from '@/lib/types'
 
 function db() {
@@ -520,9 +520,10 @@ export async function deleteSalesLedgerEntry(id: string): Promise<boolean> {
 
 // ── Transfer Vouchers ───────────────────────────────────────────────────────
 
-export async function getTransferVouchers(branchId?: string): Promise<TransferVoucher[]> {
+export async function getTransferVouchers(branchId?: string, side?: VoucherSide): Promise<TransferVoucher[]> {
   let q = db().from('transfer_vouchers').select('*, lines:transfer_voucher_lines(*)').order('voucher_date', { ascending: false })
   if (branchId) q = q.eq('branch_id', branchId)
+  if (side) q = q.eq('side', side)
   const { data } = await q
   return (data ?? []) as TransferVoucher[]
 }
@@ -530,6 +531,20 @@ export async function getTransferVouchers(branchId?: string): Promise<TransferVo
 export async function getTransferVoucher(id: string): Promise<TransferVoucher | null> {
   const { data } = await db().from('transfer_vouchers').select('*, lines:transfer_voucher_lines(*)').eq('id', id).single()
   return data as TransferVoucher | null
+}
+
+export async function searchUnsettledVouchers(keyword: string, branchId?: string): Promise<TransferVoucher[]> {
+  if (!keyword.trim()) return []
+  const escaped = keyword.replace(/%/g, '\\%').replace(/_/g, '\\_')
+  let q = db().from('transfer_vouchers')
+    .select('*, lines:transfer_voucher_lines(*)')
+    .eq('side', 'debit')
+    .eq('status', 'unsettled')
+    .or(`customer_name.ilike.%${escaped}%,description.ilike.%${escaped}%`)
+    .order('voucher_date', { ascending: false })
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data } = await q
+  return (data ?? []) as TransferVoucher[]
 }
 
 export async function createTransferVoucher(input: Partial<TransferVoucher> & { lines?: Partial<TransferVoucherLine>[] }): Promise<TransferVoucher> {
@@ -541,8 +556,13 @@ export async function createTransferVoucher(input: Partial<TransferVoucher> & { 
     branch_id: vData.branch_id ?? '00000000-0000-0000-0000-000000000001',
     voucher_number: vData.voucher_number || `TV-${new Date().getFullYear()}-${num}`,
     voucher_date: vData.voucher_date,
-    memo: vData.memo ?? '',
+    customer_name: vData.customer_name ?? '',
+    description: vData.description ?? '',
+    side: vData.side ?? 'debit',
+    status: vData.status ?? 'unsettled',
+    linked_voucher_id: vData.linked_voucher_id ?? null,
     total_amount: vData.total_amount ?? 0,
+    memo: vData.memo ?? '',
   }).select().single()
   if (error) throw error
 
@@ -550,11 +570,8 @@ export async function createTransferVoucher(input: Partial<TransferVoucher> & { 
     const { error: linesError } = await db().from('transfer_voucher_lines').insert(
       lines.map((l) => ({
         voucher_id: voucher.id,
-        debit_account: l.debit_account ?? '',
-        debit_amount: l.debit_amount ?? 0,
-        credit_account: l.credit_account ?? '',
-        credit_amount: l.credit_amount ?? 0,
         description: l.description ?? '',
+        amount: l.amount ?? 0,
         line_order: l.line_order ?? 0,
       }))
     )
@@ -564,32 +581,48 @@ export async function createTransferVoucher(input: Partial<TransferVoucher> & { 
   return { ...voucher, lines: [] } as TransferVoucher
 }
 
-export async function updateTransferVoucher(id: string, input: Partial<TransferVoucher> & { lines?: Partial<TransferVoucherLine>[] }): Promise<TransferVoucher | null> {
-  const { lines, ...vData } = input
-  const { data } = await db().from('transfer_vouchers').update({ ...vData, updated_at: new Date().toISOString() }).eq('id', id).select().single()
-  if (!data) return null
+export async function settleVoucher(debitVoucherId: string, branchId?: string): Promise<TransferVoucher | null> {
+  const debit = await getTransferVoucher(debitVoucherId)
+  if (!debit || debit.side !== 'debit' || debit.status !== 'unsettled') return null
 
-  if (lines) {
-    await db().from('transfer_voucher_lines').delete().eq('voucher_id', id)
-    if (lines.length > 0) {
-      await db().from('transfer_voucher_lines').insert(
-        lines.map((l) => ({
-          voucher_id: id,
-          debit_account: l.debit_account ?? '',
-          debit_amount: l.debit_amount ?? 0,
-          credit_account: l.credit_account ?? '',
-          credit_amount: l.credit_amount ?? 0,
-          description: l.description ?? '',
-          line_order: l.line_order ?? 0,
-        }))
-      )
-    }
-  }
+  // Create matching credit voucher
+  const credit = await createTransferVoucher({
+    branch_id: branchId ?? debit.branch_id,
+    voucher_date: new Date().toISOString().slice(0, 10),
+    customer_name: debit.customer_name,
+    description: debit.description,
+    side: 'credit',
+    status: 'settled',
+    linked_voucher_id: debit.id,
+    total_amount: debit.total_amount,
+    memo: `${debit.customer_name} ${debit.description} 入金`,
+    lines: (debit.lines ?? []).map((l) => ({
+      description: l.description,
+      amount: l.amount,
+      line_order: l.line_order,
+    })),
+  })
 
-  return data as TransferVoucher
+  // Mark debit as settled
+  await db().from('transfer_vouchers').update({
+    status: 'settled',
+    linked_voucher_id: credit.id,
+    updated_at: new Date().toISOString(),
+  }).eq('id', debitVoucherId)
+
+  return credit
 }
 
 export async function deleteTransferVoucher(id: string): Promise<boolean> {
+  // If this is a settled voucher, also unsettled the linked one
+  const voucher = await getTransferVoucher(id)
+  if (voucher?.linked_voucher_id) {
+    await db().from('transfer_vouchers').update({
+      status: 'unsettled',
+      linked_voucher_id: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', voucher.linked_voucher_id)
+  }
   const { error } = await db().from('transfer_vouchers').delete().eq('id', id)
   return !error
 }
