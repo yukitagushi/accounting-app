@@ -288,10 +288,10 @@ function VoucherFormView({
                 <tr key={idx} className="group/row">
                   <td className="border border-gray-300 p-0">
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
                       value={line.debit_amount}
-                      onChange={(e) => updateLine(idx, 'debit_amount', e.target.value)}
+                      onChange={(e) => updateLine(idx, 'debit_amount', e.target.value.replace(/[^0-9]/g, ''))}
                       placeholder="0"
                       className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50 text-right tabular-nums"
                     />
@@ -325,10 +325,10 @@ function VoucherFormView({
                   </td>
                   <td className="border border-gray-300 p-0">
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
                       value={line.credit_amount}
-                      onChange={(e) => updateLine(idx, 'credit_amount', e.target.value)}
+                      onChange={(e) => updateLine(idx, 'credit_amount', e.target.value.replace(/[^0-9]/g, ''))}
                       placeholder="0"
                       className="w-full bg-transparent border-0 outline-none text-sm py-2 px-2 focus:bg-blue-50/50 text-right tabular-nums"
                     />

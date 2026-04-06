@@ -91,42 +91,42 @@ function SavedEntryRow({ entry, balance, onDelete, onUpdate, onBlurSave }: Saved
       </td>
       <td className="py-1 px-2 min-w-[70px]">
         <input
-          type="number"
-          value={entry.quantity}
-          onChange={(e) => onUpdate(entry.id, 'quantity', Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          value={entry.quantity || ''}
+          onChange={(e) => onUpdate(entry.id, 'quantity', e.target.value === '' ? 0 : Number(e.target.value.replace(/[^0-9]/g, '')))}
           onBlur={() => onBlurSave(entry.id)}
           className={INPUT_NUM}
-          min={0}
         />
       </td>
       <td className="py-1 px-2 min-w-[100px]">
         <input
-          type="number"
-          value={entry.unit_price}
-          onChange={(e) => onUpdate(entry.id, 'unit_price', Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          value={entry.unit_price || ''}
+          onChange={(e) => onUpdate(entry.id, 'unit_price', e.target.value === '' ? 0 : Number(e.target.value.replace(/[^0-9]/g, '')))}
           onBlur={() => onBlurSave(entry.id)}
           className={INPUT_NUM}
-          min={0}
         />
       </td>
       <td className="py-1 px-2 min-w-[110px]">
         <input
-          type="number"
-          value={entry.income_amount}
-          onChange={(e) => onUpdate(entry.id, 'income_amount', Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          value={entry.income_amount || ''}
+          onChange={(e) => onUpdate(entry.id, 'income_amount', e.target.value === '' ? 0 : Number(e.target.value.replace(/[^0-9]/g, '')))}
           onBlur={() => onBlurSave(entry.id)}
           className={INPUT_NUM}
-          min={0}
         />
       </td>
       <td className="py-1 px-2 min-w-[110px]">
         <input
-          type="number"
-          value={entry.payment_amount}
-          onChange={(e) => onUpdate(entry.id, 'payment_amount', Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          value={entry.payment_amount || ''}
+          onChange={(e) => onUpdate(entry.id, 'payment_amount', e.target.value === '' ? 0 : Number(e.target.value.replace(/[^0-9]/g, '')))}
           onBlur={() => onBlurSave(entry.id)}
           className={INPUT_NUM}
-          min={0}
         />
       </td>
       <td
@@ -199,42 +199,46 @@ function DraftEntryRow({ draft, lineNumber, onChange, onSave, onDiscard }: Draft
       </td>
       <td className="py-1 px-2 min-w-[70px]">
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={draft.quantity}
-          onChange={(e) => onChange(draft._draftId, 'quantity', e.target.value)}
+          onChange={(e) => onChange(draft._draftId, 'quantity', e.target.value.replace(/[^0-9]/g, ''))}
           onBlur={() => onSave(draft._draftId)}
           className={INPUT_NUM}
-          min={0}
+          placeholder="1"
         />
       </td>
       <td className="py-1 px-2 min-w-[100px]">
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={draft.unit_price}
-          onChange={(e) => onChange(draft._draftId, 'unit_price', e.target.value)}
+          onChange={(e) => onChange(draft._draftId, 'unit_price', e.target.value.replace(/[^0-9]/g, ''))}
           onBlur={() => onSave(draft._draftId)}
           className={INPUT_NUM}
-          min={0}
+          placeholder="0"
         />
       </td>
       <td className="py-1 px-2 min-w-[110px]">
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={draft.income_amount}
-          onChange={(e) => onChange(draft._draftId, 'income_amount', e.target.value)}
+          onChange={(e) => onChange(draft._draftId, 'income_amount', e.target.value.replace(/[^0-9]/g, ''))}
           onBlur={() => onSave(draft._draftId)}
           className={INPUT_NUM}
-          min={0}
+          placeholder="0"
         />
       </td>
       <td className="py-1 px-2 min-w-[110px]">
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={draft.payment_amount}
-          onChange={(e) => onChange(draft._draftId, 'payment_amount', e.target.value)}
+          onChange={(e) => onChange(draft._draftId, 'payment_amount', e.target.value.replace(/[^0-9]/g, ''))}
           onBlur={() => onSave(draft._draftId)}
           className={INPUT_NUM}
-          min={0}
+          placeholder="0"
         />
       </td>
       <td className="py-2 px-3 text-right tabular-nums text-gray-400 text-sm min-w-[110px]">—</td>
