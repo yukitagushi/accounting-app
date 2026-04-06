@@ -42,6 +42,14 @@ export const updateVehicleInspection = supabase.updateVehicleInspection
 
 export const getCreditCardTransactions = supabase.getCreditCardTransactions
 
+export const getPayments = supabase.getPayments
+export const getPaymentsByInvoice = supabase.getPaymentsByInvoice
+export const createPayment = supabase.createPayment
+export const getInspectionJournalEntries = supabase.getInspectionJournalEntries
+export const createInspectionJournalEntry = supabase.createInspectionJournalEntry
+export const updateInvoicePaidAmount = supabase.updateInvoicePaidAmount
+export const searchInvoicesByPaymentKeyword = supabase.searchInvoicesByPaymentKeyword
+
 export async function convertEstimateToInvoice(estimateId: string): Promise<Invoice | null> {
   const estimate = await supabase.getEstimate(estimateId)
   if (!estimate) return null

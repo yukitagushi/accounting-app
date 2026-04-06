@@ -33,7 +33,7 @@ export type AccountCategory = 'assets' | 'liabilities' | 'equity' | 'revenue' | 
 export type Account = { id: string; code: string; name: string; category: AccountCategory; sub_category: string; is_system: boolean; branch_id: string }
 
 // Journal Entry (仕訳)
-export type JournalEntryType = 'normal' | 'transfer' | 'vehicle_inspection'
+export type JournalEntryType = 'normal' | 'transfer' | 'vehicle_inspection' | 'payment'
 export type JournalEntryStatus = 'draft' | 'posted' | 'void'
 export type JournalEntry = {
   id: string; branch_id: string; entry_date: string; description: string
@@ -58,6 +58,7 @@ export type VehicleInspection = {
   actual_maintenance: number; actual_parts: number; actual_substitute_car: number; actual_other: number
   total_deposit: number; total_actual: number; difference: number
   journal_entry_id?: string; created_at: string
+  customer_id?: string; invoice_id?: string; customer?: Customer; invoice?: Invoice
 }
 
 // Estimate (見積書)
@@ -91,13 +92,14 @@ export type EstimateLineItem = {
 }
 
 // Invoice (請求書)
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void'
+export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'void'
 export type Invoice = {
   id: string; branch_id: string; invoice_number: string
   estimate_id?: string; customer_name: string; customer_address: string
   customer_code?: string
   issue_date: string; due_date: string; tax_mode: TaxMode
   subtotal: number; tax_amount: number; total: number
+  paid_amount?: number
   discount?: number
   status: InvoiceStatus; payment_date?: string; notes: string; created_at: string
   vehicle_name?: string
@@ -142,4 +144,23 @@ export type AppSettings = {
 // Fiscal Year
 export type FiscalYear = {
   id: string; branch_id: string; start_date: string; end_date: string; is_current: boolean
+}
+
+// Payment (入金)
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'credit_card' | 'other'
+
+export type Payment = {
+  id: string; branch_id: string; payment_number: string; invoice_id: string
+  payment_date: string; amount: number; payment_method: PaymentMethod
+  description: string; journal_entry_id?: string; created_at: string
+  invoice?: Invoice
+}
+
+// Inspection Journal Entry
+export type InspectionJournalEntryPurpose = 'advance' | 'invoice' | 'payment' | 'settlement'
+
+export type InspectionJournalEntry = {
+  id: string; inspection_id: string; journal_entry_id: string
+  entry_purpose: InspectionJournalEntryPurpose; created_at: string
+  journal_entry?: JournalEntry
 }

@@ -13,6 +13,7 @@ import {
   ArrowRight,
   AlertCircle,
   Camera,
+  Banknote,
 } from 'lucide-react'
 import {
   BarChart,
@@ -30,9 +31,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
-import { getInvoices, getJournalEntries, getVehicleInspections } from '@/lib/supabase/database'
+import { getInvoices, getJournalEntries, getVehicleInspections, getPayments } from '@/lib/supabase/database'
 import { useBranchStore } from '@/hooks/use-branch'
-import type { Invoice, JournalEntry, VehicleInspection } from '@/lib/types'
+import type { Invoice, JournalEntry, VehicleInspection, Payment } from '@/lib/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,7 @@ export default function DashboardPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
   const [vehicleInspections, setVehicleInspections] = useState<VehicleInspection[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -124,10 +126,12 @@ export default function DashboardPage() {
       getInvoices(branchId),
       getJournalEntries(branchId),
       getVehicleInspections(branchId),
-    ]).then(([invs, entries, vis]) => {
+      getPayments(branchId),
+    ]).then(([invs, entries, vis, pays]) => {
       setInvoices(invs)
       setJournalEntries(entries)
       setVehicleInspections(vis)
+      setPayments(pays)
       setLoading(false)
     }).catch(() => {
       setLoading(false)
@@ -142,10 +146,27 @@ export default function DashboardPage() {
 
   const thisMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(thisMonthStr))
   const prevMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(prevMonthStr))
-  const monthlyRevenue = thisMonthInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
-  const prevMonthRevenue = prevMonthInvoices.reduce((s, i) => s + (i.total ?? 0), 0)
-  const revenueTrend = prevMonthRevenue > 0
-    ? ((monthlyRevenue - prevMonthRevenue) / prevMonthRevenue) * 100
+
+  // Net revenue: exclude pass-through items (立替金) from invoice totals
+  // Pass-through categories: jibaiseki, weight_tax, stamp (tax_rate = 0 items)
+  const thisMonthNetRevenue = thisMonthInvoices.reduce((sum, inv) => {
+    if (!inv.line_items || inv.line_items.length === 0) return sum + (inv.total ?? 0)
+    const revenue = inv.line_items
+      .filter(li => (li.tax_rate ?? 0) > 0) // Revenue items have tax > 0
+      .reduce((s, li) => s + (li.amount ?? 0), 0)
+    return sum + revenue
+  }, 0)
+
+  const prevMonthNetRevenue = prevMonthInvoices.reduce((sum, inv) => {
+    if (!inv.line_items || inv.line_items.length === 0) return sum + (inv.total ?? 0)
+    const revenue = inv.line_items
+      .filter(li => (li.tax_rate ?? 0) > 0)
+      .reduce((s, li) => s + (li.amount ?? 0), 0)
+    return sum + revenue
+  }, 0)
+
+  const netRevenueTrend = prevMonthNetRevenue > 0
+    ? ((thisMonthNetRevenue - prevMonthNetRevenue) / prevMonthNetRevenue) * 100
     : 0
 
   const unpaidInvoices = invoices.filter((i) => i.status === 'sent' || i.status === 'overdue')
@@ -158,13 +179,17 @@ export default function DashboardPage() {
     .sort((a, b) => (b.entry_date ?? '').localeCompare(a.entry_date ?? ''))
     .slice(0, 5)
 
-  // Build bar chart data: last 6 months
+  // Build bar chart data: last 6 months (net revenue excluding pass-through items)
   const barData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const revenue = invoices
-      .filter((inv) => inv.issue_date?.startsWith(monthStr))
-      .reduce((s, inv) => s + (inv.total ?? 0), 0)
+    const monthInvoices = invoices.filter((inv) => inv.issue_date?.startsWith(monthStr))
+    const revenue = monthInvoices.reduce((s, inv) => {
+      if (!inv.line_items || inv.line_items.length === 0) return s + (inv.total ?? 0)
+      return s + inv.line_items
+        .filter(li => (li.tax_rate ?? 0) > 0)
+        .reduce((sum, li) => sum + (li.amount ?? 0), 0)
+    }, 0)
     return { month: getMonthLabel(d), revenue }
   })
 
@@ -212,14 +237,14 @@ export default function DashboardPage() {
         className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
       >
         <StatCard
-          title="今月の売上"
-          value={formatYen(monthlyRevenue)}
-          sub={`${now.getFullYear()}年${now.getMonth() + 1}月`}
+          title="今月の実売上"
+          value={formatYen(thisMonthNetRevenue)}
+          sub={`${now.getFullYear()}年${now.getMonth() + 1}月（立替金除く）`}
           iconBg="bg-indigo-100"
           icon={<TrendingUp className="w-5 h-5 text-indigo-600" />}
-          trend={prevMonthRevenue > 0 ? {
-            positive: revenueTrend > 0,
-            text: `前月比 ${revenueTrend > 0 ? '+' : ''}${revenueTrend.toFixed(1)}%`,
+          trend={prevMonthNetRevenue > 0 ? {
+            positive: netRevenueTrend > 0,
+            text: `前月比 ${netRevenueTrend > 0 ? '+' : ''}${netRevenueTrend.toFixed(1)}%`,
           } : undefined}
         />
         <StatCard
@@ -349,7 +374,7 @@ export default function DashboardPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.35 }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
       >
         {/* Recent journal entries */}
         <Card className="border-0 shadow-sm ring-1 ring-gray-100">
@@ -446,6 +471,40 @@ export default function DashboardPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Payments */}
+        <Card className="border-0 shadow-sm ring-1 ring-gray-100">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Banknote className="w-4 h-4 text-green-600" />
+              <CardTitle className="text-sm font-semibold text-gray-700">最近の入金</CardTitle>
+            </div>
+            <Link href="/payments" className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+              すべて表示 <ArrowRight className="w-3 h-3" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {payments.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">入金データなし</p>
+            ) : (
+              <div className="space-y-3">
+                {payments.slice(0, 5).map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {payment.invoice?.customer_name ?? payment.description}
+                      </p>
+                      <p className="text-xs text-gray-400">{payment.payment_date}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-green-600 tabular-nums">
+                      {formatYen(payment.amount)}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

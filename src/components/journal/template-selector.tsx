@@ -214,11 +214,13 @@ function TemplateCard({
     normal: 'bg-blue-50 text-blue-700',
     transfer: 'bg-purple-50 text-purple-700',
     vehicle_inspection: 'bg-emerald-50 text-emerald-700',
+    payment: 'bg-amber-50 text-amber-700',
   }
   const typeLabels: Record<JournalEntryType, string> = {
     normal: '通常仕訳',
     transfer: '振替伝票',
     vehicle_inspection: '車検仕訳',
+    payment: '入金仕訳',
   }
 
   return (

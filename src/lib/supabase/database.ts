@@ -6,6 +6,7 @@ import type {
   Customer, Account, JournalEntry, JournalEntryLine,
   Estimate, EstimateLineItem, Invoice, InvoiceLineItem,
   VehicleInspection, CreditCardTransaction, AppSettings,
+  Payment, InspectionJournalEntry,
 } from '@/lib/types'
 
 function db() {
@@ -428,4 +429,82 @@ export async function getAppSettings(branchId?: string): Promise<AppSettings | n
   const bid = branchId ?? '00000000-0000-0000-0000-000000000001'
   const { data } = await db().from('app_settings').select('*').eq('branch_id', bid).single()
   return data as AppSettings | null
+}
+
+// ── Payments ────────────────────────────────────────────────────────────────
+
+export async function getPayments(branchId?: string): Promise<Payment[]> {
+  let q = db().from('payments').select('*, invoice:invoices(*)').order('payment_date', { ascending: false })
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data } = await q
+  return (data ?? []) as Payment[]
+}
+
+export async function getPaymentsByInvoice(invoiceId: string): Promise<Payment[]> {
+  const { data } = await db().from('payments').select('*').eq('invoice_id', invoiceId).order('payment_date', { ascending: false })
+  return (data ?? []) as Payment[]
+}
+
+export async function createPayment(input: Partial<Payment>): Promise<Payment> {
+  const { count } = await db().from('payments').select('*', { count: 'exact', head: true })
+  const num = String((count ?? 0) + 1).padStart(3, '0')
+  const payNumber = `PAY-${new Date().getFullYear()}-${num}`
+
+  const { data, error } = await db().from('payments').insert({
+    branch_id: input.branch_id ?? '00000000-0000-0000-0000-000000000001',
+    payment_number: input.payment_number ?? payNumber,
+    invoice_id: input.invoice_id,
+    payment_date: input.payment_date,
+    amount: input.amount ?? 0,
+    payment_method: input.payment_method ?? 'cash',
+    description: input.description ?? '',
+    journal_entry_id: input.journal_entry_id,
+  }).select().single()
+  if (error) throw error
+  return data as Payment
+}
+
+// ── Inspection Journal Entries ──────────────────────────────────────────────
+
+export async function getInspectionJournalEntries(inspectionId: string): Promise<InspectionJournalEntry[]> {
+  const { data } = await db().from('inspection_journal_entries')
+    .select('*, journal_entry:journal_entries(*, lines:journal_entry_lines(*, account:accounts(*)))')
+    .eq('inspection_id', inspectionId)
+    .order('created_at', { ascending: true })
+  return (data ?? []) as InspectionJournalEntry[]
+}
+
+export async function createInspectionJournalEntry(input: { inspection_id: string; journal_entry_id: string; entry_purpose: string }): Promise<InspectionJournalEntry> {
+  const { data, error } = await db().from('inspection_journal_entries').insert(input).select().single()
+  if (error) throw error
+  return data as InspectionJournalEntry
+}
+
+// ── Invoice Payment Helpers ─────────────────────────────────────────────────
+
+export async function updateInvoicePaidAmount(invoiceId: string): Promise<void> {
+  const payments = await getPaymentsByInvoice(invoiceId)
+  const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0)
+
+  const { data: invoice } = await db().from('invoices').select('total').eq('id', invoiceId).single()
+  if (!invoice) return
+
+  let status: string = 'sent'
+  if (paidAmount >= invoice.total) status = 'paid'
+  else if (paidAmount > 0) status = 'partial'
+
+  await db().from('invoices').update({ paid_amount: paidAmount, status }).eq('id', invoiceId)
+}
+
+export async function searchInvoicesByPaymentKeyword(keyword: string): Promise<Invoice[]> {
+  // Parse customer name from patterns like "田中車検代入金", "田中 入金", "田中"
+  const cleaned = keyword.replace(/車検代?入金|入金|代金/g, '').trim()
+  if (!cleaned) return []
+
+  const { data } = await db().from('invoices')
+    .select('*, line_items:invoice_line_items(*)')
+    .ilike('customer_name', `%${cleaned}%`)
+    .in('status', ['sent', 'partial', 'overdue'])
+    .order('issue_date', { ascending: false })
+  return (data ?? []) as Invoice[]
 }

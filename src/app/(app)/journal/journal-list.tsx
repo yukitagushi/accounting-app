@@ -51,6 +51,7 @@ const ENTRY_TYPE_COLORS: Record<JournalEntryType, string> = {
   normal: 'bg-blue-50 text-blue-700 border-blue-200',
   transfer: 'bg-purple-50 text-purple-700 border-purple-200',
   vehicle_inspection: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  payment: 'bg-amber-50 text-amber-700 border-amber-200',
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────

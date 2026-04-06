@@ -17,6 +17,7 @@ import {
   Camera,
   Plus,
   ChevronDown,
+  Banknote,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,7 @@ const navItems: NavItem[] = [
   { label: '見積書', href: '/estimates', icon: FileText },
   { label: '顧客管理', href: '/customers', icon: Users },
   { label: '請求書', href: '/invoices', icon: Receipt },
+  { label: '入金管理', href: '/payments', icon: Banknote },
   { label: '会計管理', href: '/accounting', icon: Calculator },
 ] as const
 

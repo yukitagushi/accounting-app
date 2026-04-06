@@ -60,7 +60,25 @@ export const JOURNAL_ENTRY_TYPES = {
   normal: '通常仕訳',
   transfer: '振替伝票',
   vehicle_inspection: '車検仕訳',
+  payment: '入金仕訳',
 } as const
+
+export const PAYMENT_METHODS: Record<string, string> = {
+  cash: '現金',
+  bank_transfer: '銀行振込',
+  credit_card: 'クレジットカード',
+  other: 'その他',
+}
+
+export const INSPECTION_ITEM_CATEGORIES = {
+  jibaiseki: { type: 'passthrough' as const, account_code: '1400', label: '自賠責保険', tax_rate: 0 },
+  weight_tax: { type: 'passthrough' as const, account_code: '1400', label: '重量税', tax_rate: 0 },
+  stamp: { type: 'passthrough' as const, account_code: '1400', label: '印紙代', tax_rate: 0 },
+  maintenance: { type: 'revenue' as const, account_code: '4100', label: '整備費用', tax_rate: 0.10 },
+  parts: { type: 'revenue' as const, account_code: '4200', label: '部品代', tax_rate: 0.10 },
+  substitute_car: { type: 'revenue' as const, account_code: '4100', label: '代車費用', tax_rate: 0.10 },
+  other: { type: 'revenue' as const, account_code: '4000', label: 'その他', tax_rate: 0.10 },
+}
 
 export const VEHICLE_INSPECTION_ITEMS = [
   { key: 'jibaiseki', label: '自賠責保険' },

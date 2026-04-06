@@ -10,9 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getInvoice, updateInvoice } from '@/lib/mock-data'
-import type { Invoice } from '@/lib/types'
+import { getPaymentsByInvoice } from '@/lib/supabase/database'
+import type { Invoice, Payment } from '@/lib/types'
+import { PAYMENT_METHODS } from '@/lib/constants'
 import {
-  ChevronLeft, Pencil, FileDown, Printer, CheckCircle, XCircle, AlertCircle
+  ChevronLeft, Pencil, FileDown, Printer, CheckCircle, XCircle, AlertCircle, Banknote
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -32,12 +34,14 @@ export default function InvoiceDetailPage({ params }: PageProps) {
   const router = useRouter()
 
   const [invoice, setInvoice] = useState<Invoice | null | undefined>(undefined)
+  const [payments, setPayments] = useState<Payment[]>([])
   const [paymentDate, setPaymentDate] = useState('')
   const [showPaymentInput, setShowPaymentInput] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     getInvoice(id).then(setInvoice)
+    getPaymentsByInvoice(id).then(setPayments)
   }, [id])
 
   if (invoice === undefined) {
@@ -327,6 +331,85 @@ export default function InvoiceDetailPage({ params }: PageProps) {
             <p className="text-sm text-gray-700 whitespace-pre-line">{invoice.notes}</p>
           </div>
         )}
+
+        {/* Payment history */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">入金履歴</h2>
+            {invoice.status !== 'paid' && invoice.status !== 'void' && (
+              <Link href="/payments/new">
+                <Button size="sm" variant="outline" className="gap-1.5 text-blue-600 border-blue-300 hover:bg-blue-50">
+                  <Banknote className="w-3.5 h-3.5" />
+                  入金登録
+                </Button>
+              </Link>
+            )}
+          </div>
+
+          {/* Summary row */}
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+            <div className="flex flex-wrap items-center gap-6 text-sm">
+              <div>
+                <span className="text-gray-500">請求合計: </span>
+                <span className="font-semibold tabular-nums text-gray-900">
+                  {formatCurrency(invoice.total)}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">入金済み: </span>
+                <span className="font-semibold tabular-nums text-emerald-700">
+                  {formatCurrency(invoice.paid_amount ?? 0)}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">残高: </span>
+                <span
+                  className={cn(
+                    'font-bold tabular-nums',
+                    (invoice.total - (invoice.paid_amount ?? 0)) > 0
+                      ? 'text-orange-600'
+                      : 'text-gray-500'
+                  )}
+                >
+                  {formatCurrency(invoice.total - (invoice.paid_amount ?? 0))}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {payments.length === 0 ? (
+            <div className="px-5 py-6 text-sm text-gray-400 text-center">
+              入金記録がありません
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-5 py-2.5 font-medium text-gray-600">入金日</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-gray-600">金額</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-gray-600">入金方法</th>
+                  <th className="text-left px-5 py-2.5 font-medium text-gray-600">摘要</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {payments.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-5 py-3 text-gray-700">{p.payment_date}</td>
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-900">
+                      {formatCurrency(p.amount)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {PAYMENT_METHODS[p.payment_method] ?? p.payment_method}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500 max-w-[200px] truncate">
+                      {p.description}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
         {/* PDF Preview */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
