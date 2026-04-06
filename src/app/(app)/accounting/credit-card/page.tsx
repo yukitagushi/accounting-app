@@ -97,7 +97,7 @@ export default function CreditCardPage() {
     <div>
       <PageHeader
         title="クレジットカード決済管理"
-        description="クレジットカード決済の手数料と売上を管理します"
+        description="クレカ決済の手数料と売上を管理します"
         actions={
           <>
             <CSVExportDialog

@@ -43,7 +43,7 @@ export default function AccountingPage() {
     <div>
       <PageHeader
         title="会計管理"
-        description="試算表・勘定科目・クレジットカード決済を管理します"
+        description="試算表・勘定科目を管理します"
         actions={
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600 shrink-0">期間:</label>

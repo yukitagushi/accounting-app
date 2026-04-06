@@ -914,7 +914,8 @@ export default function TransferVoucherPage() {
       <AccountingTabs active="transfer-voucher" />
 
       {/* Internal tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 w-fit overflow-x-auto">
+      <div className="-mx-6 px-6 mb-6 overflow-x-auto scrollbar-hide">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-max min-w-full sm:w-fit">
         {TAB_ITEMS.map((tab) => {
           const Icon = tab.icon
           return (
@@ -933,6 +934,7 @@ export default function TransferVoucherPage() {
             </button>
           )
         })}
+      </div>
       </div>
 
       {/* Tab content */}
