@@ -573,6 +573,7 @@ export async function createTransferVoucher(input: Partial<TransferVoucher> & { 
         description: l.description ?? '',
         amount: l.amount ?? 0,
         line_order: l.line_order ?? 0,
+        line_type: l.line_type ?? 'sales',
       }))
     )
     if (linesError) throw linesError
@@ -600,6 +601,7 @@ export async function settleVoucher(debitVoucherId: string, branchId?: string): 
       description: l.description,
       amount: l.amount,
       line_order: l.line_order,
+      line_type: l.line_type ?? 'sales',
     })),
   })
 
