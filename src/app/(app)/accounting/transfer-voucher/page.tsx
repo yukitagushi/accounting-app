@@ -1332,9 +1332,21 @@ interface EditForm {
   description: string
   voucher_date: string
   lines: EditFormLine[]
+  paymentInput: string
 }
 
 const EMPTY_EDIT_LINE = (): EditFormLine => ({ description: '', amount: '', line_type: 'sales' })
+
+/** 入金額を上から順に割り当て、各行の残高を計算 */
+function calcLineBalances(lines: EditFormLine[], paymentTotal: number) {
+  let remaining = paymentTotal
+  return lines.map((line) => {
+    const amount = parseInt(line.amount, 10) || 0
+    const allocated = Math.min(remaining, amount)
+    remaining -= allocated
+    return { amount, allocated, balance: amount - allocated }
+  })
+}
 
 function VoucherList({
   branchId,
@@ -1378,10 +1390,12 @@ function VoucherList({
 
   function startEdit(v: TransferVoucher) {
     setEditingVoucherId(v.id)
+    const existingPayment = (v.lines ?? []).reduce((s, l) => s + (l.payment_amount ?? 0), 0)
     setEditForm({
       customer_name: v.customer_name,
       description: v.description,
       voucher_date: v.voucher_date,
+      paymentInput: existingPayment > 0 ? String(existingPayment) : '',
       lines: (v.lines ?? [])
         .sort((a, b) => a.line_order - b.line_order)
         .map((l) => ({
@@ -1432,21 +1446,33 @@ function VoucherList({
       return
     }
     const totalAmount = activeLines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+    const paymentTotal = parseInt(editForm.paymentInput, 10) || 0
+    const balances = calcLineBalances(activeLines, paymentTotal)
+
     setSaving(true)
     try {
-      await updateTransferVoucher(voucherId, {
+      const updated = await updateTransferVoucher(voucherId, {
         customer_name: editForm.customer_name.trim(),
         description: editForm.description.trim(),
         voucher_date: editForm.voucher_date,
         total_amount: totalAmount,
+        status: paymentTotal >= totalAmount ? 'settled' : 'unsettled',
         lines: activeLines.map((l, idx) => ({
           description: l.description.trim(),
           amount: parseInt(l.amount, 10) || 0,
+          payment_amount: balances[idx].allocated,
           line_order: idx + 1,
           line_type: l.line_type,
         })),
       })
-      toast.success('振替伝票を更新しました')
+      const remainingTotal = totalAmount - paymentTotal
+      if (paymentTotal > 0 && remainingTotal > 0) {
+        toast.success(`保存しました（入金 ${formatCurrency(paymentTotal)} / 残高 ${formatCurrency(remainingTotal)}）`)
+      } else if (paymentTotal >= totalAmount) {
+        toast.success('保存しました（全額入金済み）')
+      } else {
+        toast.success('振替伝票を更新しました')
+      }
       cancelEdit()
       loadData()
     } catch {
@@ -1513,6 +1539,9 @@ function VoucherList({
 
             if (isEditing && editForm) {
               const editTotal = editForm.lines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+              const paymentTotal = parseInt(editForm.paymentInput, 10) || 0
+              const balances = calcLineBalances(editForm.lines, paymentTotal)
+              const remainingTotal = editTotal - paymentTotal
               return (
                 <div
                   key={v.id}
@@ -1553,67 +1582,133 @@ function VoucherList({
                     </div>
                   </div>
 
+                  {/* 入金額入力 */}
+                  <div className="bg-white rounded-lg border border-blue-200 p-3">
+                    <label className="block text-xs font-bold text-blue-800 mb-1.5">入金金額</label>
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-1 max-w-[200px]">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">¥</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={editForm.paymentInput}
+                          onChange={(e) => setEditForm((p) => p ? { ...p, paymentInput: e.target.value.replace(/[^0-9]/g, '') } : p)}
+                          placeholder="0"
+                          className="h-10 w-full rounded-lg border border-blue-300 bg-white pl-7 pr-3 text-base font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setEditForm((p) => p ? { ...p, paymentInput: String(editTotal) } : p)}
+                        className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                      >
+                        全額
+                      </button>
+                      {paymentTotal > 0 && (
+                        <button
+                          onClick={() => setEditForm((p) => p ? { ...p, paymentInput: '' } : p)}
+                          className="px-3 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors"
+                        >
+                          クリア
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-white/60">
                           <th className="text-left font-medium text-gray-600 py-2 px-3 border-b border-gray-200">項目名</th>
-                          <th className="text-center font-medium text-gray-600 py-2 px-2 border-b border-gray-200 w-24">種別</th>
-                          <th className="text-right font-medium text-gray-600 py-2 px-3 border-b border-gray-200 w-[140px]">金額</th>
+                          <th className="text-center font-medium text-gray-600 py-2 px-2 border-b border-gray-200 w-20">種別</th>
+                          <th className="text-right font-medium text-gray-600 py-2 px-3 border-b border-gray-200 w-[120px]">金額</th>
+                          <th className="text-right font-medium text-gray-600 py-2 px-3 border-b border-gray-200 w-[100px]">残高</th>
                           <th className="border-b border-gray-200 w-8" />
                         </tr>
                       </thead>
                       <tbody>
-                        {editForm.lines.map((line, idx) => (
-                          <tr key={idx} className="border-t border-gray-100 hover:bg-white/70 group/row">
-                            <td className="p-0">
-                              <input
-                                type="text"
-                                value={line.description}
-                                onChange={(e) => updateEditLine(idx, 'description', e.target.value)}
-                                placeholder="項目名"
-                                className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80"
-                              />
-                            </td>
-                            <td className="p-0 text-center px-2">
-                              <select
-                                value={line.line_type}
-                                onChange={(e) => updateEditLine(idx, 'line_type', e.target.value)}
-                                className="h-7 rounded border border-gray-200 bg-white px-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500/30"
-                              >
-                                <option value="advance">立替</option>
-                                <option value="sales">売上</option>
-                              </select>
-                            </td>
-                            <td className="p-0">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={line.amount}
-                                onChange={(e) => updateEditLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))}
-                                placeholder="0"
-                                className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80 text-right tabular-nums"
-                              />
-                            </td>
-                            <td className="p-0">
-                              <button
-                                onClick={() => removeEditLine(idx)}
-                                className="w-full h-full flex items-center justify-center py-2 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {editForm.lines.map((line, idx) => {
+                          const bal = balances[idx]
+                          return (
+                            <tr key={idx} className="border-t border-gray-100 hover:bg-white/70 group/row">
+                              <td className="p-0">
+                                <input
+                                  type="text"
+                                  value={line.description}
+                                  onChange={(e) => updateEditLine(idx, 'description', e.target.value)}
+                                  placeholder="項目名"
+                                  className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80"
+                                />
+                              </td>
+                              <td className="p-0 text-center px-2">
+                                <select
+                                  value={line.line_type}
+                                  onChange={(e) => updateEditLine(idx, 'line_type', e.target.value)}
+                                  className="h-7 rounded border border-gray-200 bg-white px-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+                                >
+                                  <option value="advance">立替</option>
+                                  <option value="sales">売上</option>
+                                </select>
+                              </td>
+                              <td className="p-0">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={line.amount}
+                                  onChange={(e) => updateEditLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))}
+                                  placeholder="0"
+                                  className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80 text-right tabular-nums"
+                                />
+                              </td>
+                              <td className={cn(
+                                'py-2 px-3 text-right tabular-nums text-sm font-medium',
+                                bal.balance === 0 && paymentTotal > 0 ? 'text-green-600' : bal.balance < bal.amount && paymentTotal > 0 ? 'text-orange-600' : 'text-gray-400'
+                              )}>
+                                {paymentTotal > 0 ? (
+                                  bal.balance === 0 ? '✓ 0' : formatCurrency(bal.balance)
+                                ) : '—'}
+                              </td>
+                              <td className="p-0">
+                                <button
+                                  onClick={() => removeEditLine(idx)}
+                                  className="w-full h-full flex items-center justify-center py-2 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
                         <tr className="bg-white/60 border-t-2 border-gray-300 font-bold">
                           <td className="py-2 px-3 text-sm text-gray-700">合計</td>
                           <td />
                           <td className="py-2 px-3 text-right tabular-nums text-sm text-gray-900">{formatCurrency(editTotal)}</td>
+                          <td className={cn(
+                            'py-2 px-3 text-right tabular-nums text-sm font-bold',
+                            paymentTotal > 0 ? (remainingTotal <= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-400'
+                          )}>
+                            {paymentTotal > 0 ? (
+                              remainingTotal <= 0 ? '✓ 完済' : formatCurrency(remainingTotal)
+                            ) : '—'}
+                          </td>
                           <td />
                         </tr>
                       </tbody>
                     </table>
                   </div>
+
+                  {/* 残高サマリー */}
+                  {paymentTotal > 0 && remainingTotal > 0 && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+                      <p className="text-orange-800 font-medium">
+                        ⚠ このお客様にまだ <span className="font-bold">{formatCurrency(remainingTotal)}</span> の掛け金があります
+                      </p>
+                    </div>
+                  )}
+                  {paymentTotal > 0 && remainingTotal <= 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                      <p className="text-green-800 font-medium">✓ 全額入金済み — 掛け金なし</p>
+                    </div>
+                  )}
 
                   <button
                     onClick={addEditLine}
