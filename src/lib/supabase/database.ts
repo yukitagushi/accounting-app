@@ -615,6 +615,51 @@ export async function settleVoucher(debitVoucherId: string, branchId?: string): 
   return credit
 }
 
+export async function updateTransferVoucher(
+  id: string,
+  input: Partial<TransferVoucher> & { lines?: Partial<TransferVoucherLine>[] }
+): Promise<TransferVoucher | null> {
+  const { lines, ...vData } = input
+  const updateData: Record<string, unknown> = { ...vData, updated_at: new Date().toISOString() }
+  delete updateData.id
+  delete updateData.created_at
+
+  const { data, error } = await db().from('transfer_vouchers').update(updateData).eq('id', id).select().single()
+  if (error || !data) return null
+
+  if (lines) {
+    await db().from('transfer_voucher_lines').delete().eq('voucher_id', id)
+    if (lines.length > 0) {
+      await db().from('transfer_voucher_lines').insert(
+        lines.map((l) => ({
+          voucher_id: id,
+          description: l.description ?? '',
+          amount: l.amount ?? 0,
+          payment_amount: l.payment_amount ?? 0,
+          line_order: l.line_order ?? 0,
+          line_type: l.line_type ?? 'sales',
+        }))
+      )
+    }
+  }
+
+  return await getTransferVoucher(id)
+}
+
+export async function updateVoucherLinePayments(voucherId: string, linePayments: { id: string; payment_amount: number }[]): Promise<void> {
+  for (const lp of linePayments) {
+    await db().from('transfer_voucher_lines').update({ payment_amount: lp.payment_amount }).eq('id', lp.id)
+  }
+  // Check if fully paid
+  const voucher = await getTransferVoucher(voucherId)
+  if (!voucher) return
+  const totalAmount = (voucher.lines ?? []).reduce((s, l) => s + l.amount, 0)
+  const totalPaid = linePayments.reduce((s, lp) => s + lp.payment_amount, 0)
+  if (totalPaid >= totalAmount) {
+    await db().from('transfer_vouchers').update({ status: 'settled', updated_at: new Date().toISOString() }).eq('id', voucherId)
+  }
+}
+
 export async function deleteTransferVoucher(id: string): Promise<boolean> {
   // If this is a settled voucher, also unsettled the linked one
   const voucher = await getTransferVoucher(id)

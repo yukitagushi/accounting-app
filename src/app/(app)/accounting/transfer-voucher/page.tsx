@@ -9,8 +9,9 @@ import {
   getTransferVouchers,
   createTransferVoucher,
   searchUnsettledVouchers,
-  settleVoucher,
   deleteTransferVoucher,
+  updateTransferVoucher,
+  updateVoucherLinePayments,
 } from '@/lib/supabase/database'
 import type { TransferVoucher, TransferVoucherLine } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,7 @@ import {
   ChevronRight,
   List,
   X,
+  Pencil,
 } from 'lucide-react'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -149,34 +151,121 @@ function LineTypeBadge({ lineType }: { lineType?: string }) {
   )
 }
 
+// ── Line Payment Status ──────────────────────────────────────────────────────
+
+function LinePaymentStatus({
+  line,
+}: {
+  line: { amount: number; payment_amount?: number; line_type?: string; description: string }
+}) {
+  const ltype = line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')
+  const paid = line.payment_amount ?? 0
+
+  if (paid > 0 && paid >= line.amount) {
+    if (ltype === 'advance') {
+      return (
+        <span className="text-xs font-medium text-green-600">✓ 回収済</span>
+      )
+    }
+    return (
+      <span className="text-xs font-medium text-green-600">✓ 入金済</span>
+    )
+  }
+  if (paid > 0 && paid < line.amount) {
+    const remaining = line.amount - paid
+    return (
+      <span className="text-xs font-medium text-orange-600">
+        残 {formatCurrency(remaining)}
+      </span>
+    )
+  }
+  // unpaid default
+  if (ltype === 'advance') {
+    return (
+      <span className="text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+        ±0
+      </span>
+    )
+  }
+  return (
+    <span className="text-xs font-medium text-green-600">売上</span>
+  )
+}
+
 // ── Settlement Modal ─────────────────────────────────────────────────────────
 
 function SettlementModal({
   voucher,
-  onConfirm,
+  onConfirmPartial,
   onClose,
   loading,
 }: {
   voucher: TransferVoucher
-  onConfirm: () => void
+  onConfirmPartial: (linePayments: { id: string; payment_amount: number }[]) => void
   onClose: () => void
   loading: boolean
 }) {
-  const lines = (voucher.lines ?? []).sort((a, b) => a.line_order - b.line_order)
-  const advanceTotal = lines
-    .filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'advance')
-    .reduce((s, l) => s + l.amount, 0)
-  const salesTotal = lines
-    .filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'sales')
-    .reduce((s, l) => s + l.amount, 0)
+  const sortedLines = (voucher.lines ?? []).sort((a, b) => a.line_order - b.line_order)
+
+  // payment_amount state per line: lineId -> amount string
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {}
+    for (const l of sortedLines) {
+      if (l.id) init[l.id] = String(l.amount)
+    }
+    return init
+  })
+
+  function setAllFull() {
+    const next: Record<string, string> = {}
+    for (const l of sortedLines) {
+      if (l.id) next[l.id] = String(l.amount)
+    }
+    setPaymentAmounts(next)
+  }
+
+  function clearAll() {
+    const next: Record<string, string> = {}
+    for (const l of sortedLines) {
+      if (l.id) next[l.id] = '0'
+    }
+    setPaymentAmounts(next)
+  }
+
+  const advanceLines = sortedLines.filter(
+    (l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'advance'
+  )
+  const salesLines = sortedLines.filter(
+    (l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'sales'
+  )
+
+  const advanceRecovery = advanceLines.reduce(
+    (s, l) => s + (parseInt(l.id ? paymentAmounts[l.id] ?? '0' : '0', 10) || 0),
+    0
+  )
+  const salesPayment = salesLines.reduce(
+    (s, l) => s + (parseInt(l.id ? paymentAmounts[l.id] ?? '0' : '0', 10) || 0),
+    0
+  )
+  const totalPayment = advanceRecovery + salesPayment
+
+  function handleConfirm() {
+    const linePayments = sortedLines
+      .filter((l) => l.id)
+      .map((l) => ({
+        id: l.id!,
+        payment_amount: parseInt(paymentAmounts[l.id!] ?? '0', 10) || 0,
+      }))
+    onConfirmPartial(linePayments)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div>
-            <h2 className="text-base font-bold text-gray-900">入金確認</h2>
+            <h2 className="text-base font-bold text-gray-900">入金処理</h2>
             <p className="text-sm text-gray-500 mt-0.5">
               {voucher.customer_name} — {voucher.description} ({formatDate(voucher.voucher_date)})
             </p>
@@ -190,80 +279,128 @@ function SettlementModal({
         </div>
 
         {/* Line details */}
-        <div className="px-5 py-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-gray-500 text-xs">
-                <th className="text-left font-medium py-2 px-3 rounded-l-lg">項目</th>
-                <th className="text-right font-medium py-2 px-3">金額</th>
-                <th className="text-center font-medium py-2 px-3">種別</th>
-                <th className="text-center font-medium py-2 px-3 rounded-r-lg">収支</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {lines.map((line, i) => {
-                const ltype = line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')
-                return (
-                  <tr key={i} className="hover:bg-gray-50/50">
-                    <td className="py-2.5 px-3 text-gray-800">{line.description}</td>
-                    <td className="py-2.5 px-3 text-right tabular-nums text-gray-900 font-medium">
-                      {formatCurrency(line.amount)}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <LineTypeBadge lineType={ltype} />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      {ltype === 'advance' ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600">
-                          ±0
-                        </span>
-                      ) : (
-                        <span className="text-xs font-medium text-green-600">売上</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 font-bold">
-                <td className="py-3 px-3 text-gray-900">合計</td>
-                <td className="py-3 px-3 text-right tabular-nums text-gray-900">
-                  {formatCurrency(voucher.total_amount)}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
+        <div className="px-5 py-4 overflow-y-auto flex-1">
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={setAllFull}
+              className="text-xs px-2.5 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors font-medium"
+            >
+              全額入金
+            </button>
+            <button
+              onClick={clearAll}
+              className="text-xs px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors font-medium"
+            >
+              クリア
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500 text-xs">
+                  <th className="text-left font-medium py-2 px-3 rounded-l-lg">項目</th>
+                  <th className="text-center font-medium py-2 px-2">種別</th>
+                  <th className="text-right font-medium py-2 px-3">請求額</th>
+                  <th className="text-right font-medium py-2 px-3">入金額</th>
+                  <th className="text-right font-medium py-2 px-3 rounded-r-lg">残高</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {sortedLines.map((line, i) => {
+                  const ltype = line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')
+                  const payStr = line.id ? paymentAmounts[line.id] ?? '0' : '0'
+                  const payNum = parseInt(payStr, 10) || 0
+                  const remaining = line.amount - payNum
+                  return (
+                    <tr key={i} className="hover:bg-gray-50/50">
+                      <td className="py-2 px-3 text-gray-800">{line.description}</td>
+                      <td className="py-2 px-2 text-center">
+                        <LineTypeBadge lineType={ltype} />
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-900 font-medium">
+                        {formatCurrency(line.amount)}
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        {line.id ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={paymentAmounts[line.id] ?? '0'}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/[^0-9]/g, '')
+                              setPaymentAmounts((prev) => ({ ...prev, [line.id!]: v }))
+                            }}
+                            className="w-28 h-7 rounded-lg border border-gray-200 bg-white px-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                          />
+                        ) : (
+                          <span className="tabular-nums text-gray-500">---</span>
+                        )}
+                      </td>
+                      <td className={cn(
+                        'py-2 px-3 text-right tabular-nums text-sm font-medium',
+                        remaining <= 0 ? 'text-green-600' : remaining < line.amount ? 'text-orange-600' : 'text-gray-600'
+                      )}>
+                        {remaining <= 0 ? '✓' : formatCurrency(remaining)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 font-bold">
+                  <td className="py-3 px-3 text-gray-900" colSpan={2}>合計</td>
+                  <td className="py-3 px-3 text-right tabular-nums text-gray-900">
+                    {formatCurrency(voucher.total_amount)}
+                  </td>
+                  <td className="py-3 px-3 text-right tabular-nums text-gray-900">
+                    {formatCurrency(totalPayment)}
+                  </td>
+                  <td className={cn(
+                    'py-3 px-3 text-right tabular-nums font-bold',
+                    totalPayment >= voucher.total_amount ? 'text-green-600' : totalPayment > 0 ? 'text-orange-600' : 'text-gray-500'
+                  )}>
+                    {totalPayment >= voucher.total_amount ? '✓' : formatCurrency(voucher.total_amount - totalPayment)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
           {/* Summary */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-3 gap-3">
             <div className="bg-orange-50 rounded-xl p-3 border border-orange-100">
-              <p className="text-xs text-orange-600 mb-1">立替合計（±0）</p>
+              <p className="text-xs text-orange-600 mb-1">立替回収</p>
               <p className="text-base font-bold tabular-nums text-orange-800">
-                {formatCurrency(advanceTotal)}
+                {formatCurrency(advanceRecovery)}
               </p>
             </div>
             <div className="bg-green-50 rounded-xl p-3 border border-green-100">
-              <p className="text-xs text-green-600 mb-1">売上合計</p>
+              <p className="text-xs text-green-600 mb-1">売上入金</p>
               <p className="text-base font-bold tabular-nums text-green-800">
-                {formatCurrency(salesTotal)}
+                {formatCurrency(salesPayment)}
+              </p>
+            </div>
+            <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+              <p className="text-xs text-blue-600 mb-1">合計入金</p>
+              <p className="text-base font-bold tabular-nums text-blue-800">
+                {formatCurrency(totalPayment)}
               </p>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-100">
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-100 shrink-0">
           <Button variant="outline" onClick={onClose} disabled={loading}>
             キャンセル
           </Button>
           <Button
-            onClick={onConfirm}
-            disabled={loading}
+            onClick={handleConfirm}
+            disabled={loading || totalPayment === 0}
             className="bg-green-600 hover:bg-green-700 text-white"
           >
-            {loading ? '処理中...' : '入金確認する'}
+            {loading ? '処理中...' : totalPayment >= voucher.total_amount ? '全額入金確認' : '一部入金確認'}
           </Button>
         </div>
       </div>
@@ -833,19 +970,30 @@ function PaymentProcessing({
     }, 300)
   }
 
-  async function handleSettle(voucher: TransferVoucher) {
+  async function handlePartialPayment(
+    voucher: TransferVoucher,
+    linePayments: { id: string; payment_amount: number }[]
+  ) {
     setSettlingId(voucher.id)
     try {
-      const credit = await settleVoucher(voucher.id, branchId)
-      if (credit) {
-        toast.success('入金確認が完了しました')
-        setSettledInfo({ amount: voucher.total_amount })
-        setResults((prev) => prev.filter((v) => v.id !== voucher.id))
-        setModalVoucher(null)
-        onSettled()
+      await updateVoucherLinePayments(voucher.id, linePayments)
+      const totalPaid = linePayments.reduce((s, lp) => s + lp.payment_amount, 0)
+      const isFullyPaid = totalPaid >= voucher.total_amount
+      if (isFullyPaid) {
+        toast.success(`入金確認が完了しました（合計 ${formatCurrency(totalPaid)}）`)
       } else {
-        toast.error('入金処理に失敗しました')
+        toast.success(`一部入金を記録しました（入金 ${formatCurrency(totalPaid)}）`)
       }
+      setSettledInfo({ amount: totalPaid })
+      if (isFullyPaid) {
+        setResults((prev) => prev.filter((v) => v.id !== voucher.id))
+      } else {
+        // refresh results to show updated payment_amounts
+        const updated = await searchUnsettledVouchers(query.trim(), branchId)
+        setResults(updated)
+      }
+      setModalVoucher(null)
+      onSettled()
     } catch {
       toast.error('入金処理に失敗しました')
     } finally {
@@ -859,7 +1007,7 @@ function PaymentProcessing({
       {modalVoucher && (
         <SettlementModal
           voucher={modalVoucher}
-          onConfirm={() => handleSettle(modalVoucher)}
+          onConfirmPartial={(linePayments) => handlePartialPayment(modalVoucher, linePayments)}
           onClose={() => setModalVoucher(null)}
           loading={settlingId === modalVoucher.id}
         />
@@ -927,6 +1075,9 @@ function PaymentProcessing({
                                   </td>
                                   <td className="py-0.5 text-right tabular-nums">
                                     {formatCurrency(line.amount)}
+                                  </td>
+                                  <td className="py-0.5 text-right pl-2">
+                                    <LinePaymentStatus line={line} />
                                   </td>
                                 </tr>
                               )
@@ -1110,21 +1261,35 @@ function BalanceCheck({
                 未入金
               </h3>
               <div className="space-y-2">
-                {unsettledDebits.map((v) => (
-                  <div
-                    key={v.id}
-                    className="bg-white rounded-xl border border-amber-200 p-3 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2 text-sm">
-                      <StatusBadge status="unsettled" />
-                      <span className="font-medium text-gray-900">{v.customer_name}</span>
-                      <span className="text-gray-500">{v.description}</span>
+                {unsettledDebits.map((v) => {
+                  const vLines = v.lines ?? []
+                  const totalPaid = vLines.reduce((s, l) => s + (l.payment_amount ?? 0), 0)
+                  return (
+                    <div
+                      key={v.id}
+                      className="bg-white rounded-xl border border-amber-200 p-3 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2 text-sm">
+                        <StatusBadge status="unsettled" />
+                        <span className="font-medium text-gray-900">{v.customer_name}</span>
+                        <span className="text-gray-500">{v.description}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-right">
+                        <span className="text-sm font-bold tabular-nums text-gray-900">
+                          {formatCurrency(v.total_amount)}
+                        </span>
+                        {totalPaid > 0 && totalPaid < v.total_amount && (
+                          <span className="text-xs text-orange-600 font-medium">
+                            残 {formatCurrency(v.total_amount - totalPaid)}
+                          </span>
+                        )}
+                        {totalPaid > 0 && totalPaid >= v.total_amount && (
+                          <span className="text-xs text-green-600 font-medium">✓ 入金済</span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-sm font-bold tabular-nums text-gray-900">
-                      {formatCurrency(v.total_amount)}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -1156,6 +1321,21 @@ function BalanceCheck({
 
 // ── Tab 5: Voucher List ──────────────────────────────────────────────────────
 
+interface EditFormLine {
+  description: string
+  amount: string
+  line_type: 'advance' | 'sales'
+}
+
+interface EditForm {
+  customer_name: string
+  description: string
+  voucher_date: string
+  lines: EditFormLine[]
+}
+
+const EMPTY_EDIT_LINE = (): EditFormLine => ({ description: '', amount: '', line_type: 'sales' })
+
 function VoucherList({
   branchId,
   refreshKey,
@@ -1167,6 +1347,9 @@ function VoucherList({
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<'all' | 'unsettled' | 'settled'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -1192,6 +1375,86 @@ function VoucherList({
       v.description.includes(searchQuery)
     return matchStatus && matchSearch
   })
+
+  function startEdit(v: TransferVoucher) {
+    setEditingVoucherId(v.id)
+    setEditForm({
+      customer_name: v.customer_name,
+      description: v.description,
+      voucher_date: v.voucher_date,
+      lines: (v.lines ?? [])
+        .sort((a, b) => a.line_order - b.line_order)
+        .map((l) => ({
+          description: l.description,
+          amount: String(l.amount),
+          line_type: l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales'),
+        })),
+    })
+  }
+
+  function cancelEdit() {
+    setEditingVoucherId(null)
+    setEditForm(null)
+  }
+
+  function updateEditLine(idx: number, field: keyof EditFormLine, value: string) {
+    setEditForm((prev) => {
+      if (!prev) return prev
+      const next = [...prev.lines]
+      next[idx] = { ...next[idx], [field]: value }
+      return { ...prev, lines: next }
+    })
+  }
+
+  function addEditLine() {
+    setEditForm((prev) => {
+      if (!prev) return prev
+      return { ...prev, lines: [...prev.lines, EMPTY_EDIT_LINE()] }
+    })
+  }
+
+  function removeEditLine(idx: number) {
+    setEditForm((prev) => {
+      if (!prev) return prev
+      return { ...prev, lines: prev.lines.filter((_, i) => i !== idx) }
+    })
+  }
+
+  async function handleSaveEdit(voucherId: string) {
+    if (!editForm) return
+    if (!editForm.customer_name.trim()) {
+      toast.error('顧客名を入力してください')
+      return
+    }
+    const activeLines = editForm.lines.filter((l) => l.description.trim() || l.amount.trim())
+    if (activeLines.length === 0) {
+      toast.error('少なくとも1行入力してください')
+      return
+    }
+    const totalAmount = activeLines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+    setSaving(true)
+    try {
+      await updateTransferVoucher(voucherId, {
+        customer_name: editForm.customer_name.trim(),
+        description: editForm.description.trim(),
+        voucher_date: editForm.voucher_date,
+        total_amount: totalAmount,
+        lines: activeLines.map((l, idx) => ({
+          description: l.description.trim(),
+          amount: parseInt(l.amount, 10) || 0,
+          line_order: idx + 1,
+          line_type: l.line_type,
+        })),
+      })
+      toast.success('振替伝票を更新しました')
+      cancelEdit()
+      loadData()
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -1239,12 +1502,143 @@ function VoucherList({
         <div className="space-y-3">
           {filtered.map((v) => {
             const lines = (v.lines ?? []).sort((a, b) => a.line_order - b.line_order)
-            const advanceTotal = lines
-              .filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'advance')
-              .reduce((s, l) => s + l.amount, 0)
-            const salesTotal = lines
-              .filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'sales')
-              .reduce((s, l) => s + l.amount, 0)
+            const advanceLines = lines.filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'advance')
+            const salesLines = lines.filter((l) => (l.line_type ?? (isAdvanceLine(l.description) ? 'advance' : 'sales')) === 'sales')
+            const advanceTotal = advanceLines.reduce((s, l) => s + l.amount, 0)
+            const salesTotal = salesLines.reduce((s, l) => s + l.amount, 0)
+            const advancePaid = advanceLines.reduce((s, l) => s + (l.payment_amount ?? 0), 0)
+            const salesPaid = salesLines.reduce((s, l) => s + (l.payment_amount ?? 0), 0)
+
+            const isEditing = editingVoucherId === v.id && editForm !== null
+
+            if (isEditing && editForm) {
+              const editTotal = editForm.lines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+              return (
+                <div
+                  key={v.id}
+                  className="bg-blue-50 rounded-xl border border-blue-300 p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold text-blue-900">振替伝票 編集</h4>
+                    <span className="text-xs text-gray-500">{v.voucher_number}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">日付</label>
+                      <input
+                        type="date"
+                        value={editForm.voucher_date}
+                        onChange={(e) => setEditForm((p) => p ? { ...p, voucher_date: e.target.value } : p)}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">顧客名</label>
+                      <input
+                        type="text"
+                        value={editForm.customer_name}
+                        onChange={(e) => setEditForm((p) => p ? { ...p, customer_name: e.target.value } : p)}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">摘要</label>
+                      <input
+                        type="text"
+                        value={editForm.description}
+                        onChange={(e) => setEditForm((p) => p ? { ...p, description: e.target.value } : p)}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-white/60">
+                          <th className="text-left font-medium text-gray-600 py-2 px-3 border-b border-gray-200">項目名</th>
+                          <th className="text-center font-medium text-gray-600 py-2 px-2 border-b border-gray-200 w-24">種別</th>
+                          <th className="text-right font-medium text-gray-600 py-2 px-3 border-b border-gray-200 w-[140px]">金額</th>
+                          <th className="border-b border-gray-200 w-8" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editForm.lines.map((line, idx) => (
+                          <tr key={idx} className="border-t border-gray-100 hover:bg-white/70 group/row">
+                            <td className="p-0">
+                              <input
+                                type="text"
+                                value={line.description}
+                                onChange={(e) => updateEditLine(idx, 'description', e.target.value)}
+                                placeholder="項目名"
+                                className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80"
+                              />
+                            </td>
+                            <td className="p-0 text-center px-2">
+                              <select
+                                value={line.line_type}
+                                onChange={(e) => updateEditLine(idx, 'line_type', e.target.value)}
+                                className="h-7 rounded border border-gray-200 bg-white px-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+                              >
+                                <option value="advance">立替</option>
+                                <option value="sales">売上</option>
+                              </select>
+                            </td>
+                            <td className="p-0">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={line.amount}
+                                onChange={(e) => updateEditLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))}
+                                placeholder="0"
+                                className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80 text-right tabular-nums"
+                              />
+                            </td>
+                            <td className="p-0">
+                              <button
+                                onClick={() => removeEditLine(idx)}
+                                className="w-full h-full flex items-center justify-center py-2 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-white/60 border-t-2 border-gray-300 font-bold">
+                          <td className="py-2 px-3 text-sm text-gray-700">合計</td>
+                          <td />
+                          <td className="py-2 px-3 text-right tabular-nums text-sm text-gray-900">{formatCurrency(editTotal)}</td>
+                          <td />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button
+                    onClick={addEditLine}
+                    className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    行追加
+                  </button>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
+                      キャンセル
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveEdit(v.id)}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {saving ? '保存中...' : '保存'}
+                    </Button>
+                  </div>
+                </div>
+              )
+            }
 
             return (
               <div
@@ -1261,7 +1655,18 @@ function VoucherList({
                     <span className="text-xs text-gray-500 truncate">{v.description}</span>
                     <span className="text-xs text-gray-400">{formatDate(v.voucher_date)}</span>
                   </div>
-                  <StatusBadge status={v.status} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <StatusBadge status={v.status} />
+                    {v.status === 'unsettled' && (
+                      <button
+                        onClick={() => startEdit(v)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        title="編集"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Line items table */}
@@ -1278,24 +1683,17 @@ function VoucherList({
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {lines.map((line, i) => {
-                          const ltype = line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')
                           return (
                             <tr key={i} className="text-gray-700">
                               <td className="py-1.5 px-3">{line.description}</td>
                               <td className="py-1.5 px-2 text-center">
-                                <LineTypeBadge lineType={ltype} />
+                                <LineTypeBadge lineType={line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')} />
                               </td>
                               <td className="py-1.5 px-3 text-right tabular-nums">
                                 {formatCurrency(line.amount)}
                               </td>
                               <td className="py-1.5 px-2 text-center">
-                                {ltype === 'advance' ? (
-                                  <span className="text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                    ±0
-                                  </span>
-                                ) : (
-                                  <span className="text-xs font-medium text-green-600">売上</span>
-                                )}
+                                <LinePaymentStatus line={line} />
                               </td>
                             </tr>
                           )
@@ -1311,12 +1709,17 @@ function VoucherList({
                     {advanceTotal > 0 && (
                       <span>
                         立替 <span className="font-bold text-orange-700">{formatCurrency(advanceTotal)}</span>
-                        <span className="text-gray-400 ml-1">(±0)</span>
+                        {advancePaid > 0 && (
+                          <span className="text-green-600 ml-1">(回収 {formatCurrency(advancePaid)})</span>
+                        )}
                       </span>
                     )}
                     {salesTotal > 0 && (
                       <span>
                         売上 <span className="font-bold text-green-700">{formatCurrency(salesTotal)}</span>
+                        {salesPaid > 0 && (
+                          <span className="text-green-600 ml-1">(入金 {formatCurrency(salesPaid)})</span>
+                        )}
                       </span>
                     )}
                   </div>

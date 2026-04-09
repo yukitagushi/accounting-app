@@ -185,6 +185,7 @@ export type TransferVoucherLineType = 'advance' | 'sales'
 export type TransferVoucherLine = {
   id?: string; voucher_id?: string
   description: string; amount: number
+  payment_amount?: number
   line_order: number; created_at?: string
   line_type?: TransferVoucherLineType
 }
