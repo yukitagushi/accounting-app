@@ -660,6 +660,104 @@ export async function updateVoucherLinePayments(voucherId: string, linePayments:
   }
 }
 
+// ── Trial Balance Aggregation ───────────────────────────────────────────────
+
+export type TrialBalanceRow = {
+  account_id: string
+  account_code: string
+  account_name: string
+  category: string
+  sub_category: string
+  debit_balance: number
+  credit_balance: number
+}
+
+/**
+ * 振替伝票から月次試算表を集計
+ * - 売上明細（line_type='sales'）を品目名ごとに集計して収益項目として表示
+ * - 立替明細（line_type='advance'）の未回収分を「立替金」として資産項目に表示
+ * @param branchId ブランチID（未指定なら全拠点）
+ * @param yearMonth 'YYYY-MM' 形式
+ */
+export async function getTrialBalanceFromVouchers(branchId: string | undefined, yearMonth: string): Promise<TrialBalanceRow[]> {
+  const vouchers = await getTransferVouchers(branchId, 'debit')
+  const monthVouchers = vouchers.filter((v) => v.voucher_date?.startsWith(yearMonth))
+
+  // 売上を品目名ごとに集計
+  const salesMap = new Map<string, number>()
+  // 立替金（未回収分）を集計
+  const advanceMap = new Map<string, number>()
+  // 現金入金合計（回収済み金額）
+  let cashReceived = 0
+
+  for (const v of monthVouchers) {
+    for (const line of v.lines ?? []) {
+      const lineType = line.line_type ?? 'sales'
+      const description = (line.description || '').trim() || 'その他'
+      const amount = line.amount || 0
+      const paid = line.payment_amount ?? 0
+
+      if (lineType === 'sales') {
+        salesMap.set(description, (salesMap.get(description) ?? 0) + amount)
+        cashReceived += paid
+      } else {
+        const unpaid = amount - paid
+        if (unpaid > 0) {
+          advanceMap.set(description, (advanceMap.get(description) ?? 0) + unpaid)
+        }
+        cashReceived += paid
+      }
+    }
+  }
+
+  const rows: TrialBalanceRow[] = []
+
+  // 資産: 立替金（未回収の立替）
+  let idx = 0
+  for (const [name, amount] of advanceMap.entries()) {
+    if (amount > 0) {
+      rows.push({
+        account_id: `advance-${idx++}`,
+        account_code: '1400',
+        account_name: `立替金（${name}）`,
+        category: 'assets',
+        sub_category: '流動資産',
+        debit_balance: amount,
+        credit_balance: 0,
+      })
+    }
+  }
+
+  // 資産: 現金入金（この月の回収額）
+  if (cashReceived > 0) {
+    rows.push({
+      account_id: 'cash-received',
+      account_code: '1000',
+      account_name: '現金（当月入金）',
+      category: 'assets',
+      sub_category: '流動資産',
+      debit_balance: cashReceived,
+      credit_balance: 0,
+    })
+  }
+
+  // 収益: 売上品目別
+  idx = 0
+  for (const [name, amount] of salesMap.entries()) {
+    rows.push({
+      account_id: `sales-${idx++}`,
+      account_code: '4000',
+      account_name: name,
+      category: 'revenue',
+      sub_category: '売上',
+      debit_balance: 0,
+      credit_balance: amount,
+    })
+  }
+
+  return rows
+}
+
 export async function deleteTransferVoucher(id: string): Promise<boolean> {
   // If this is a settled voucher, also unsettled the linked one
   const voucher = await getTransferVoucher(id)

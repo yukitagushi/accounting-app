@@ -1,16 +1,17 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { PageHeader } from '@/components/shared/page-header'
-import { getMockTrialBalance } from '@/lib/mock-data'
+import { getTrialBalanceFromVouchers } from '@/lib/supabase/database'
+import type { TrialBalanceRow } from '@/lib/supabase/database'
 import { ACCOUNT_CATEGORIES } from '@/lib/constants'
 import type { AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { AccountingTabs } from '@/components/shared/accounting-tabs'
-import { CheckCircle, XCircle, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { CheckCircle, XCircle } from 'lucide-react'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportTrialBalance } from '@/lib/csv-export'
+import { useBranchStore } from '@/hooks/use-branch'
 
 const CATEGORY_ORDER: AccountCategory[] = ['assets', 'liabilities', 'equity', 'revenue', 'expense']
 
@@ -25,7 +26,19 @@ export default function AccountingPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const rows = getMockTrialBalance()
+  const { currentBranch } = useBranchStore()
+  const branchId = currentBranch?.id === 'all' || !currentBranch ? undefined : currentBranch.id
+
+  const [rows, setRows] = useState<TrialBalanceRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    getTrialBalanceFromVouchers(branchId, period)
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false))
+  }, [branchId, period])
 
   const groupedByCategory = useMemo(() => {
     const map: Record<string, typeof rows> = {}
@@ -38,6 +51,7 @@ export default function AccountingPage() {
   const totalDebit = rows.reduce((s, r) => s + r.debit_balance, 0)
   const totalCredit = rows.reduce((s, r) => s + r.credit_balance, 0)
   const isBalanced = Math.abs(totalDebit - totalCredit) < 1
+  const monthlySalesTotal = (groupedByCategory.revenue ?? []).reduce((s, r) => s + r.credit_balance, 0)
 
   return (
     <div>
@@ -66,6 +80,22 @@ export default function AccountingPage() {
 
       <AccountingTabs active="trial-balance" />
 
+      {/* 月次売上サマリー */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <p className="text-xs text-gray-500 mb-1">{period.replace('-', '年')}月 売上合計</p>
+          <p className="text-2xl font-bold text-green-700 tabular-nums">¥{monthlySalesTotal.toLocaleString('ja-JP')}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <p className="text-xs text-gray-500 mb-1">資産合計</p>
+          <p className="text-2xl font-bold text-blue-700 tabular-nums">¥{totalDebit.toLocaleString('ja-JP')}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <p className="text-xs text-gray-500 mb-1">売上品目数</p>
+          <p className="text-2xl font-bold text-gray-700 tabular-nums">{(groupedByCategory.revenue ?? []).length}件</p>
+        </div>
+      </div>
+
       {/* Balance Check Indicator */}
       <div
         className={cn(
@@ -87,6 +117,15 @@ export default function AccountingPage() {
       </div>
 
       {/* Trial Balance Table */}
+      {loading ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-400">
+          データを読み込み中...
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-400">
+          {period.replace('-', '年')}月の振替伝票データがありません
+        </div>
+      ) : (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
@@ -184,6 +223,7 @@ export default function AccountingPage() {
           </table>
         </div>
       </div>
+      )}
     </div>
   )
 }

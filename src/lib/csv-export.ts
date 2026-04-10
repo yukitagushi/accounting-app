@@ -6,7 +6,7 @@ import type {
   VehicleInspection,
   CreditCardTransaction,
 } from '@/lib/types'
-import type { TrialBalanceRow } from '@/lib/mock-data'
+import type { TrialBalanceRow } from '@/lib/supabase/database'
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
