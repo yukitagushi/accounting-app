@@ -8,7 +8,8 @@ import { ACCOUNT_CATEGORIES } from '@/lib/constants'
 import type { AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { AccountingTabs } from '@/components/shared/accounting-tabs'
-import { CheckCircle, XCircle } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportTrialBalance } from '@/lib/csv-export'
 import { useBranchStore } from '@/hooks/use-branch'
@@ -31,6 +32,7 @@ export default function AccountingPage() {
 
   const [rows, setRows] = useState<TrialBalanceRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     setLoading(true)
@@ -38,7 +40,14 @@ export default function AccountingPage() {
       .then(setRows)
       .catch(() => setRows([]))
       .finally(() => setLoading(false))
-  }, [branchId, period])
+  }, [branchId, period, refreshKey])
+
+  // ページがフォーカスされたら自動で再集計
+  useEffect(() => {
+    const handleFocus = () => setRefreshKey((k) => k + 1)
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
 
   const groupedByCategory = useMemo(() => {
     const map: Record<string, typeof rows> = {}
@@ -67,6 +76,17 @@ export default function AccountingPage() {
               onChange={(e) => setPeriod(e.target.value)}
               className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
             />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              disabled={loading}
+              className="gap-1.5"
+              title="最新データを再集計"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+              再集計
+            </Button>
             <CSVExportDialog
               title="試算表"
               data={rows}
