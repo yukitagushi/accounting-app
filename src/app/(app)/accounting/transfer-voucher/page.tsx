@@ -542,6 +542,24 @@ function MonthlyOverview({
     loadData()
   }, [loadData])
 
+  async function handleDeleteVoucher(v: TransferVoucher) {
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm(`振替伝票「${v.customer_name} - ${v.description}」を削除しますか？\nこの操作は取り消せません。`)
+      : false
+    if (!confirmed) return
+    try {
+      const ok = await deleteTransferVoucher(v.id)
+      if (ok) {
+        toast.success('振替伝票を削除しました')
+        loadData()
+      } else {
+        toast.error('削除に失敗しました')
+      }
+    } catch {
+      toast.error('削除に失敗しました')
+    }
+  }
+
   const carryoverItems = allDebits.filter(
     (v) => v.voucher_date < firstDayOfMonth(month) && v.status === 'unsettled'
   )
@@ -611,7 +629,7 @@ function MonthlyOverview({
               ) : (
                 <div className="space-y-2">
                   {debits.map((v) => (
-                    <VoucherCard key={v.id} voucher={v} />
+                    <VoucherCard key={v.id} voucher={v} onDelete={() => handleDeleteVoucher(v)} />
                   ))}
                 </div>
               )}
@@ -629,7 +647,7 @@ function MonthlyOverview({
               ) : (
                 <div className="space-y-2">
                   {credits.map((v) => (
-                    <VoucherCard key={v.id} voucher={v} />
+                    <VoucherCard key={v.id} voucher={v} onDelete={() => handleDeleteVoucher(v)} />
                   ))}
                 </div>
               )}
