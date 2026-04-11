@@ -128,7 +128,7 @@ function lastDayOfMonth(monthStr: string): string {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type InternalTab = 'monthly' | 'debit-entry' | 'payment' | 'balance-check' | 'voucher-list'
+type InternalTab = 'monthly' | 'debit-entry' | 'balance-check' | 'voucher-list'
 
 interface DebitFormLine {
   description: string
@@ -140,7 +140,6 @@ const EMPTY_LINE = (): DebitFormLine => ({ description: '', amount: '' })
 const TAB_ITEMS: { key: InternalTab; label: string; icon: React.ElementType }[] = [
   { key: 'monthly', label: '月次一覧', icon: CalendarDays },
   { key: 'debit-entry', label: '借方登録', icon: FileText },
-  { key: 'payment', label: '入金処理', icon: CreditCard },
   { key: 'balance-check', label: '照合確認', icon: ClipboardCheck },
   { key: 'voucher-list', label: '振替伝票一覧', icon: List },
 ]
@@ -2251,10 +2250,6 @@ export default function TransferVoucherPage() {
 
       {activeTab === 'debit-entry' && (
         <DebitEntryForm branchId={branchId} onSaved={triggerRefresh} />
-      )}
-
-      {activeTab === 'payment' && (
-        <PaymentProcessing branchId={branchId} onSettled={triggerRefresh} />
       )}
 
       {activeTab === 'balance-check' && (
