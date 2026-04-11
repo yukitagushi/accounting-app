@@ -1428,7 +1428,20 @@ interface EditForm {
   voucher_date: string
   lines: EditFormLine[]
   paymentInput: string
+  paymentMethod: 'cash' | 'credit_card' | 'bank_transfer'
+  cardBrand: 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other'
+  feeRateInput: string  // パーセント表示（例: "3.0"）
 }
+
+/** カードブランド別の標準手数料率 */
+const CARD_BRANDS: { key: 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other'; label: string; defaultRate: number }[] = [
+  { key: 'visa', label: 'VISA', defaultRate: 3.3 },
+  { key: 'mastercard', label: 'Mastercard', defaultRate: 3.3 },
+  { key: 'jcb', label: 'JCB', defaultRate: 3.5 },
+  { key: 'amex', label: 'American Express', defaultRate: 3.5 },
+  { key: 'diners', label: 'Diners Club', defaultRate: 4.0 },
+  { key: 'other', label: 'その他', defaultRate: 3.0 },
+]
 
 const EMPTY_EDIT_LINE = (): EditFormLine => ({ description: '', amount: '', line_type: 'sales' })
 
@@ -1491,6 +1504,9 @@ function VoucherList({
       description: v.description,
       voucher_date: v.voucher_date,
       paymentInput: existingPayment > 0 ? String(existingPayment) : '',
+      paymentMethod: (v.payment_method as 'cash' | 'credit_card' | 'bank_transfer') ?? 'cash',
+      cardBrand: (v.card_brand as 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other') ?? 'visa',
+      feeRateInput: v.fee_rate ? String(v.fee_rate * 100) : '3.3',
       lines: (v.lines ?? [])
         .sort((a, b) => a.line_order - b.line_order)
         .map((l) => ({
@@ -1544,6 +1560,16 @@ function VoucherList({
     const paymentTotal = parseInt(editForm.paymentInput, 10) || 0
     const balances = calcLineBalances(activeLines, paymentTotal)
 
+    // カード手数料計算（売上項目の合計に対して適用）
+    const feeRatePercent = parseFloat(editForm.feeRateInput) || 0
+    const feeRate = feeRatePercent / 100
+    const salesTotal = activeLines
+      .filter((l) => l.line_type === 'sales')
+      .reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+    const feeAmount = editForm.paymentMethod === 'credit_card'
+      ? Math.round(salesTotal * feeRate)
+      : 0
+
     setSaving(true)
     try {
       const updated = await updateTransferVoucher(voucherId, {
@@ -1552,6 +1578,10 @@ function VoucherList({
         voucher_date: editForm.voucher_date,
         total_amount: totalAmount,
         status: paymentTotal >= totalAmount ? 'settled' : 'unsettled',
+        payment_method: editForm.paymentMethod,
+        card_brand: editForm.paymentMethod === 'credit_card' ? editForm.cardBrand : undefined,
+        fee_rate: editForm.paymentMethod === 'credit_card' ? feeRate : 0,
+        fee_amount: feeAmount,
         lines: activeLines.map((l, idx) => ({
           description: l.description.trim(),
           amount: parseInt(l.amount, 10) || 0,
@@ -1678,9 +1708,9 @@ function VoucherList({
                   </div>
 
                   {/* 入金額入力 */}
-                  <div className="bg-white rounded-lg border border-blue-200 p-3">
-                    <label className="block text-xs font-bold text-blue-800 mb-1.5">入金金額</label>
-                    <div className="flex items-center gap-3">
+                  <div className="bg-white rounded-lg border border-blue-200 p-3 space-y-3">
+                    <label className="block text-xs font-bold text-blue-800">入金金額</label>
+                    <div className="flex items-center gap-3 flex-wrap">
                       <div className="relative flex-1 max-w-[200px]">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">¥</span>
                         <input
@@ -1707,6 +1737,93 @@ function VoucherList({
                         </button>
                       )}
                     </div>
+
+                    {/* 支払方法 */}
+                    <div className="pt-2 border-t border-blue-100">
+                      <label className="block text-xs font-bold text-blue-800 mb-1.5">支払方法</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {([
+                          { key: 'cash', label: '💵 現金' },
+                          { key: 'credit_card', label: '💳 クレジットカード' },
+                          { key: 'bank_transfer', label: '🏦 銀行振込' },
+                        ] as const).map((m) => (
+                          <button
+                            key={m.key}
+                            onClick={() => setEditForm((p) => p ? { ...p, paymentMethod: m.key } : p)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                              editForm.paymentMethod === m.key
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                            )}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* クレジットカード手数料設定 */}
+                    {editForm.paymentMethod === 'credit_card' && (() => {
+                      const salesTotal = editForm.lines
+                        .filter((l) => l.line_type === 'sales')
+                        .reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+                      const feeRatePercent = parseFloat(editForm.feeRateInput) || 0
+                      const feeAmount = Math.round(salesTotal * feeRatePercent / 100)
+                      const netSales = salesTotal - feeAmount
+                      return (
+                        <div className="pt-2 border-t border-blue-100 space-y-2">
+                          <label className="block text-xs font-bold text-blue-800">カードブランド</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {CARD_BRANDS.map((b) => (
+                              <button
+                                key={b.key}
+                                onClick={() => setEditForm((p) => p ? { ...p, cardBrand: b.key, feeRateInput: String(b.defaultRate) } : p)}
+                                className={cn(
+                                  'px-2 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                                  editForm.cardBrand === b.key
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                                )}
+                              >
+                                {b.label}
+                                <span className="block text-[10px] opacity-80 mt-0.5">{b.defaultRate}%</span>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-600">手数料率:</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={editForm.feeRateInput}
+                                onChange={(e) => setEditForm((p) => p ? { ...p, feeRateInput: e.target.value.replace(/[^0-9.]/g, '') } : p)}
+                                className="h-8 w-20 rounded-lg border border-gray-200 bg-white pl-2 pr-6 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                            </div>
+                          </div>
+
+                          {/* 手数料計算結果 */}
+                          {salesTotal > 0 && (
+                            <div className="bg-purple-50 rounded-lg p-2.5 text-xs space-y-1">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">売上合計（グロス）</span>
+                                <span className="tabular-nums font-medium text-gray-900">{formatCurrency(salesTotal)}</span>
+                              </div>
+                              <div className="flex justify-between text-red-600">
+                                <span>カード手数料 ({feeRatePercent}%)</span>
+                                <span className="tabular-nums font-medium">−{formatCurrency(feeAmount)}</span>
+                              </div>
+                              <div className="flex justify-between pt-1 border-t border-purple-200 font-bold">
+                                <span className="text-purple-800">試算表反映 売上（純額）</span>
+                                <span className="tabular-nums text-purple-900">{formatCurrency(netSales)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   <div className="overflow-x-auto">

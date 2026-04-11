@@ -169,6 +169,8 @@ export type SalesLedgerEntry = {
 // Transfer Voucher (振替伝票)
 export type VoucherSide = 'debit' | 'credit'
 export type VoucherStatus = 'unsettled' | 'settled'
+export type VoucherPaymentMethod = 'cash' | 'credit_card' | 'bank_transfer'
+export type VoucherCardBrand = 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other'
 
 export type TransferVoucher = {
   id: string; branch_id: string; voucher_number: string
@@ -176,6 +178,10 @@ export type TransferVoucher = {
   side: VoucherSide; status: VoucherStatus
   linked_voucher_id?: string | null
   total_amount: number; memo: string
+  payment_method?: VoucherPaymentMethod
+  card_brand?: VoucherCardBrand
+  fee_rate?: number
+  fee_amount?: number
   created_at: string; updated_at: string
   lines?: TransferVoucherLine[]
 }

@@ -676,6 +676,7 @@ export type TrialBalanceRow = {
  * 振替伝票から月次試算表を集計
  * - 売上明細（line_type='sales'）を品目名ごとに集計して収益項目として表示
  * - 立替明細（line_type='advance'）の未回収分を「立替金」として資産項目に表示
+ * - クレジットカード支払いの伝票は手数料を売上から差引き、費用項目に計上
  * @param branchId ブランチID（未指定なら全拠点）
  * @param yearMonth 'YYYY-MM' 形式
  */
@@ -683,14 +684,26 @@ export async function getTrialBalanceFromVouchers(branchId: string | undefined, 
   const vouchers = await getTransferVouchers(branchId, 'debit')
   const monthVouchers = vouchers.filter((v) => v.voucher_date?.startsWith(yearMonth))
 
-  // 売上を品目名ごとに集計
+  // 売上を品目名ごとに集計（カード手数料差引後の純額）
   const salesMap = new Map<string, number>()
   // 立替金（未回収分）を集計
   const advanceMap = new Map<string, number>()
   // 現金入金合計（回収済み金額）
   let cashReceived = 0
+  // クレジットカード手数料合計
+  let totalCardFees = 0
+  // カードブランド別の手数料
+  const feeByBrand = new Map<string, number>()
 
   for (const v of monthVouchers) {
+    const hasCardFee = v.payment_method === 'credit_card' && (v.fee_amount ?? 0) > 0
+    const voucherFee = v.fee_amount ?? 0
+    const brand = v.card_brand ?? 'other'
+
+    // 売上ラインの合計（手数料の按分計算用）
+    const salesLines = (v.lines ?? []).filter((l) => (l.line_type ?? 'sales') === 'sales')
+    const totalSalesInVoucher = salesLines.reduce((s, l) => s + (l.amount || 0), 0)
+
     for (const line of v.lines ?? []) {
       const lineType = line.line_type ?? 'sales'
       const description = (line.description || '').trim() || 'その他'
@@ -698,7 +711,13 @@ export async function getTrialBalanceFromVouchers(branchId: string | undefined, 
       const paid = line.payment_amount ?? 0
 
       if (lineType === 'sales') {
-        salesMap.set(description, (salesMap.get(description) ?? 0) + amount)
+        // カード手数料を各売上項目に按分して差引
+        let netAmount = amount
+        if (hasCardFee && totalSalesInVoucher > 0) {
+          const feeShare = Math.round((amount / totalSalesInVoucher) * voucherFee)
+          netAmount = amount - feeShare
+        }
+        salesMap.set(description, (salesMap.get(description) ?? 0) + netAmount)
         cashReceived += paid
       } else {
         const unpaid = amount - paid
@@ -707,6 +726,11 @@ export async function getTrialBalanceFromVouchers(branchId: string | undefined, 
         }
         cashReceived += paid
       }
+    }
+
+    if (hasCardFee) {
+      totalCardFees += voucherFee
+      feeByBrand.set(brand, (feeByBrand.get(brand) ?? 0) + voucherFee)
     }
   }
 
@@ -728,20 +752,21 @@ export async function getTrialBalanceFromVouchers(branchId: string | undefined, 
     }
   }
 
-  // 資産: 現金入金（この月の回収額）
-  if (cashReceived > 0) {
+  // 資産: 現金入金（この月の回収額 - カード手数料を除く）
+  const netCashReceived = cashReceived - totalCardFees
+  if (netCashReceived > 0) {
     rows.push({
       account_id: 'cash-received',
       account_code: '1000',
       account_name: '現金（当月入金）',
       category: 'assets',
       sub_category: '流動資産',
-      debit_balance: cashReceived,
+      debit_balance: netCashReceived,
       credit_balance: 0,
     })
   }
 
-  // 収益: 売上品目別
+  // 収益: 売上品目別（手数料差引後の純額）
   idx = 0
   for (const [name, amount] of salesMap.entries()) {
     rows.push({
@@ -753,6 +778,26 @@ export async function getTrialBalanceFromVouchers(branchId: string | undefined, 
       debit_balance: 0,
       credit_balance: amount,
     })
+  }
+
+  // 費用: クレジットカード手数料（ブランド別）
+  const BRAND_LABELS: Record<string, string> = {
+    visa: 'VISA', mastercard: 'Mastercard', jcb: 'JCB',
+    amex: 'AMEX', diners: 'Diners', other: 'その他',
+  }
+  idx = 0
+  for (const [brand, fee] of feeByBrand.entries()) {
+    if (fee > 0) {
+      rows.push({
+        account_id: `card-fee-${idx++}`,
+        account_code: '5900',
+        account_name: `クレジットカード手数料（${BRAND_LABELS[brand] ?? brand}）`,
+        category: 'expense',
+        sub_category: '支払手数料',
+        debit_balance: fee,
+        credit_balance: 0,
+      })
+    }
   }
 
   return rows
