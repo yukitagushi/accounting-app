@@ -1823,6 +1823,14 @@ function VoucherList({
               const balances = calcLineBalances(editForm.lines, editEffectivePayment)
               const remainingTotal = editTotal - editEffectivePayment
               const isFullyCovered = editEffectivePayment >= editTotal && editTotal > 0
+              // 手数料を差し引く対象の売上行（最後の売上行）
+              let feeTargetIdx = -1
+              for (let i = editForm.lines.length - 1; i >= 0; i--) {
+                if (editForm.lines[i].line_type === 'sales') {
+                  feeTargetIdx = i
+                  break
+                }
+              }
               return (
                 <div
                   key={v.id}
@@ -2005,6 +2013,9 @@ function VoucherList({
                       <tbody>
                         {editForm.lines.map((line, idx) => {
                           const bal = balances[idx]
+                          const isFeeTarget = idx === feeTargetIdx && editCardFeeAmount > 0 && editForm.paymentMethod === 'credit_card'
+                          const grossAmount = parseInt(line.amount, 10) || 0
+                          const netAmount = isFeeTarget ? grossAmount - editCardFeeAmount : grossAmount
                           return (
                             <tr key={idx} className="border-t border-gray-100 hover:bg-white/70 group/row">
                               <td className="p-0">
@@ -2027,20 +2038,31 @@ function VoucherList({
                                 </select>
                               </td>
                               <td className="p-0">
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={line.amount}
-                                  onChange={(e) => updateEditLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))}
-                                  placeholder="0"
-                                  className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80 text-right tabular-nums"
-                                />
+                                {isFeeTarget ? (
+                                  <div className="py-2 px-3 text-right">
+                                    <div className="text-sm tabular-nums text-purple-900 font-medium">
+                                      {netAmount.toLocaleString()}
+                                    </div>
+                                    <div className="text-[10px] text-purple-600 tabular-nums">
+                                      ¥{grossAmount.toLocaleString()} − ¥{editCardFeeAmount.toLocaleString()}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={line.amount}
+                                    onChange={(e) => updateEditLine(idx, 'amount', e.target.value.replace(/[^0-9]/g, ''))}
+                                    placeholder="0"
+                                    className="w-full bg-transparent border-0 outline-none text-sm py-2 px-3 focus:bg-white/80 text-right tabular-nums"
+                                  />
+                                )}
                               </td>
                               <td className={cn(
                                 'py-2 px-3 text-right tabular-nums text-sm font-medium',
-                                bal.balance === 0 && paymentTotal > 0 ? 'text-green-600' : bal.balance < bal.amount && paymentTotal > 0 ? 'text-orange-600' : 'text-gray-400'
+                                bal.balance === 0 && editEffectivePayment > 0 ? 'text-green-600' : bal.balance < bal.amount && editEffectivePayment > 0 ? 'text-orange-600' : 'text-gray-400'
                               )}>
-                                {paymentTotal > 0 ? (
+                                {editEffectivePayment > 0 ? (
                                   bal.balance === 0 ? '✓ 0' : formatCurrency(bal.balance)
                                 ) : '—'}
                               </td>
@@ -2181,22 +2203,45 @@ function VoucherList({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {lines.map((line, i) => {
-                          return (
-                            <tr key={i} className="text-gray-700">
-                              <td className="py-1.5 px-3">{line.description}</td>
-                              <td className="py-1.5 px-2 text-center">
-                                <LineTypeBadge lineType={line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')} />
-                              </td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">
-                                {formatCurrency(line.amount)}
-                              </td>
-                              <td className="py-1.5 px-2 text-center">
-                                <LinePaymentStatus line={line} />
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {(() => {
+                          // 手数料差引の対象行（最後の売上行）を特定
+                          let voucherFeeTargetIdx = -1
+                          if (v.payment_method === 'credit_card' && (v.fee_amount ?? 0) > 0) {
+                            for (let i = lines.length - 1; i >= 0; i--) {
+                              const lt = lines[i].line_type ?? (isAdvanceLine(lines[i].description) ? 'advance' : 'sales')
+                              if (lt === 'sales') {
+                                voucherFeeTargetIdx = i
+                                break
+                              }
+                            }
+                          }
+                          return lines.map((line, i) => {
+                            const isVoucherFeeTarget = i === voucherFeeTargetIdx
+                            const voucherFee = v.fee_amount ?? 0
+                            const netAmount = isVoucherFeeTarget ? line.amount - voucherFee : line.amount
+                            return (
+                              <tr key={i} className="text-gray-700">
+                                <td className="py-1.5 px-3">{line.description}</td>
+                                <td className="py-1.5 px-2 text-center">
+                                  <LineTypeBadge lineType={line.line_type ?? (isAdvanceLine(line.description) ? 'advance' : 'sales')} />
+                                </td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">
+                                  {isVoucherFeeTarget ? (
+                                    <div>
+                                      <div className="text-purple-900 font-medium">{netAmount.toLocaleString('ja-JP')}</div>
+                                      <div className="text-[10px] text-purple-600">¥{line.amount.toLocaleString('ja-JP')} − ¥{voucherFee.toLocaleString('ja-JP')}</div>
+                                    </div>
+                                  ) : (
+                                    formatCurrency(line.amount)
+                                  )}
+                                </td>
+                                <td className="py-1.5 px-2 text-center">
+                                  <LinePaymentStatus line={line} />
+                                </td>
+                              </tr>
+                            )
+                          })
+                        })()}
                         {/* クレジットカード手数料行（自動表示） */}
                         {v.payment_method === 'credit_card' && (v.fee_amount ?? 0) > 0 && (
                           <tr className="bg-purple-50 text-purple-900 border-t border-purple-200">
