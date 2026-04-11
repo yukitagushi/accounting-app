@@ -1600,6 +1600,24 @@ function VoucherList({
     setFeeEditorOpen(false)
   }
 
+  async function handleDelete(v: TransferVoucher) {
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm(`振替伝票「${v.customer_name} - ${v.description}」を削除しますか？\nこの操作は取り消せません。`)
+      : false
+    if (!confirmed) return
+    try {
+      const ok = await deleteTransferVoucher(v.id)
+      if (ok) {
+        toast.success('振替伝票を削除しました')
+        loadData()
+      } else {
+        toast.error('削除に失敗しました')
+      }
+    } catch {
+      toast.error('削除に失敗しました')
+    }
+  }
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -2187,6 +2205,13 @@ function VoucherList({
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                     )}
+                    <button
+                      onClick={() => handleDelete(v)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="削除"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
