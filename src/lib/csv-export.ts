@@ -128,18 +128,73 @@ export function exportTrialBalance(
   data: TrialBalanceRow[],
   period: string
 ): void {
+  const [year, month] = period.split('-')
+  const periodLabel = `${year}年${parseInt(month, 10)}月`
+
   const headers = ['勘定コード', '勘定科目', 'カテゴリ', '借方残高', '貸方残高']
 
-  const rows: string[][] = data.map((row) => [
-    row.account_code,
-    row.account_name,
-    CATEGORY_LABELS[row.category] ?? row.category,
-    String(row.debit_balance),
-    String(row.credit_balance),
-  ])
+  // タイトル行
+  const titleRows: string[][] = [
+    [`試算表 ${periodLabel}`, '', '', '', ''],
+    [`出力日: ${new Date().toLocaleDateString('ja-JP')}`, '', '', '', ''],
+    ['', '', '', '', ''],
+  ]
 
-  const content = createCSV(headers, rows)
-  downloadCSV(content, `試算表_${period}.csv`)
+  const categoryOrder = ['assets', 'liabilities', 'equity', 'revenue', 'expense']
+  const dataRows: string[][] = []
+
+  let grandDebit = 0
+  let grandCredit = 0
+
+  for (const cat of categoryOrder) {
+    const catRows = data.filter((r) => r.category === cat)
+    if (catRows.length === 0) continue
+
+    // カテゴリヘッダー
+    dataRows.push([`【${CATEGORY_LABELS[cat]}】`, '', '', '', ''])
+
+    let catDebit = 0
+    let catCredit = 0
+
+    for (const row of catRows) {
+      dataRows.push([
+        row.account_code,
+        row.account_name,
+        CATEGORY_LABELS[row.category] ?? row.category,
+        String(row.debit_balance),
+        String(row.credit_balance),
+      ])
+      catDebit += row.debit_balance
+      catCredit += row.credit_balance
+    }
+
+    // カテゴリ小計
+    dataRows.push([
+      '',
+      `${CATEGORY_LABELS[cat]}合計`,
+      '',
+      String(catDebit),
+      String(catCredit),
+    ])
+    dataRows.push(['', '', '', '', ''])
+
+    grandDebit += catDebit
+    grandCredit += catCredit
+  }
+
+  // 総合計
+  dataRows.push(['', '合計', '', String(grandDebit), String(grandCredit)])
+
+  // 月次売上サマリー
+  const monthlySales = data
+    .filter((r) => r.category === 'revenue')
+    .reduce((s, r) => s + r.credit_balance, 0)
+  dataRows.push(['', '', '', '', ''])
+  dataRows.push([`${periodLabel} 売上合計`, String(monthlySales), '', '', ''])
+
+  const allRows = [...titleRows, ...dataRows]
+  const content = createCSV(headers, allRows)
+  downloadCSV(content, `試算表_${year}年${parseInt(month, 10)}月.csv`)
 }
 
 // ── Estimates ─────────────────────────────────────────────────────────────────

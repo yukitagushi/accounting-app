@@ -8,9 +8,8 @@ import { ACCOUNT_CATEGORIES } from '@/lib/constants'
 import type { AccountCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { AccountingTabs } from '@/components/shared/accounting-tabs'
-import { CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { CSVExportDialog } from '@/components/shared/csv-export-dialog'
 import { exportTrialBalance } from '@/lib/csv-export'
 import { useBranchStore } from '@/hooks/use-branch'
 
@@ -62,20 +61,47 @@ export default function AccountingPage() {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 1
   const monthlySalesTotal = (groupedByCategory.revenue ?? []).reduce((s, r) => s + r.credit_balance, 0)
 
+  // 月の前後移動
+  function shiftMonth(delta: number) {
+    const [y, m] = period.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    const newY = d.getFullYear()
+    const newM = String(d.getMonth() + 1).padStart(2, '0')
+    setPeriod(`${newY}-${newM}`)
+  }
+
+  const [periodYear, periodMonth] = period.split('-')
+  const periodLabel = `${periodYear}年${parseInt(periodMonth, 10)}月`
+
   return (
     <div>
       <PageHeader
         title="会計管理"
         description="試算表・勘定科目を管理します"
         actions={
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600 shrink-0">期間:</label>
-            <input
-              type="month"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-1 py-0.5">
+              <button
+                onClick={() => shiftMonth(-1)}
+                className="p-1 rounded hover:bg-gray-100 transition-colors"
+                title="前月"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-600" />
+              </button>
+              <input
+                type="month"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="h-7 border-0 bg-transparent px-1 text-sm focus:outline-none tabular-nums"
+              />
+              <button
+                onClick={() => shiftMonth(1)}
+                className="p-1 rounded hover:bg-gray-100 transition-colors"
+                title="翌月"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-600" />
+              </button>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -87,13 +113,16 @@ export default function AccountingPage() {
               <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
               再集計
             </Button>
-            <CSVExportDialog
-              title="試算表"
-              data={rows}
-              dateField=""
-              showDateFilter={false}
-              onExport={() => exportTrialBalance(rows, period)}
-            />
+            <Button
+              size="sm"
+              onClick={() => exportTrialBalance(rows, period)}
+              disabled={loading || rows.length === 0}
+              className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+              title={`${periodLabel}の試算表をCSVで出力`}
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV出力
+            </Button>
           </div>
         }
       />
@@ -103,7 +132,7 @@ export default function AccountingPage() {
       {/* 月次売上サマリー */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-          <p className="text-xs text-gray-500 mb-1">{period.replace('-', '年')}月 売上合計</p>
+          <p className="text-xs text-gray-500 mb-1">{periodLabel} 売上合計</p>
           <p className="text-2xl font-bold text-green-700 tabular-nums">¥{monthlySalesTotal.toLocaleString('ja-JP')}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
