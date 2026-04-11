@@ -1687,7 +1687,6 @@ function VoucherList({
     }
     const totalAmount = activeLines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
     const paymentTotal = parseInt(editForm.paymentInput, 10) || 0
-    const balances = calcLineBalances(activeLines, paymentTotal)
 
     // カード手数料計算（売上項目の合計に対して適用）
     const feeRatePercent = parseFloat(editForm.feeRateInput) || 0
@@ -1699,6 +1698,14 @@ function VoucherList({
       ? Math.round(salesTotal * feeRate)
       : 0
 
+    // クレジットカードの場合、手数料分も「入金済み」として扱う
+    // (顧客が払った額 + カード会社が差し引いた手数料 = 実質の入金総額)
+    const effectivePayment = editForm.paymentMethod === 'credit_card'
+      ? paymentTotal + feeAmount
+      : paymentTotal
+    const balances = calcLineBalances(activeLines, effectivePayment)
+    const isSettled = effectivePayment >= totalAmount
+
     setSaving(true)
     try {
       const updated = await updateTransferVoucher(voucherId, {
@@ -1706,7 +1713,7 @@ function VoucherList({
         description: editForm.description.trim(),
         voucher_date: editForm.voucher_date,
         total_amount: totalAmount,
-        status: paymentTotal >= totalAmount ? 'settled' : 'unsettled',
+        status: isSettled ? 'settled' : 'unsettled',
         payment_method: editForm.paymentMethod,
         card_brand: editForm.paymentMethod === 'credit_card' ? editForm.cardBrand : undefined,
         fee_rate: editForm.paymentMethod === 'credit_card' ? feeRate : 0,
@@ -1719,8 +1726,10 @@ function VoucherList({
           line_type: l.line_type,
         })),
       })
-      const remainingTotal = totalAmount - paymentTotal
-      if (paymentTotal > 0 && remainingTotal > 0) {
+      const remainingTotal = totalAmount - effectivePayment
+      if (editForm.paymentMethod === 'credit_card' && isSettled && feeAmount > 0) {
+        toast.success(`保存しました（入金 ${formatCurrency(paymentTotal)} + 手数料 ${formatCurrency(feeAmount)} = 完済）`)
+      } else if (paymentTotal > 0 && remainingTotal > 0) {
         toast.success(`保存しました（入金 ${formatCurrency(paymentTotal)} / 残高 ${formatCurrency(remainingTotal)}）`)
       } else if (paymentTotal >= totalAmount) {
         toast.success('保存しました（全額入金済み）')
@@ -1802,8 +1811,18 @@ function VoucherList({
             if (isEditing && editForm) {
               const editTotal = editForm.lines.reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
               const paymentTotal = parseInt(editForm.paymentInput, 10) || 0
-              const balances = calcLineBalances(editForm.lines, paymentTotal)
-              const remainingTotal = editTotal - paymentTotal
+              // クレカの場合、手数料分も入金扱い
+              const editFeeRatePercent = parseFloat(editForm.feeRateInput) || 0
+              const editSalesTotalForFee = editForm.lines
+                .filter((l) => l.line_type === 'sales')
+                .reduce((s, l) => s + (parseInt(l.amount, 10) || 0), 0)
+              const editCardFeeAmount = editForm.paymentMethod === 'credit_card'
+                ? Math.round(editSalesTotalForFee * editFeeRatePercent / 100)
+                : 0
+              const editEffectivePayment = paymentTotal + editCardFeeAmount
+              const balances = calcLineBalances(editForm.lines, editEffectivePayment)
+              const remainingTotal = editTotal - editEffectivePayment
+              const isFullyCovered = editEffectivePayment >= editTotal && editTotal > 0
               return (
                 <div
                   key={v.id}
@@ -2036,16 +2055,36 @@ function VoucherList({
                             </tr>
                           )
                         })}
+                        {/* クレジットカード手数料行（自動表示） */}
+                        {editForm.paymentMethod === 'credit_card' && editCardFeeAmount > 0 && (
+                          <tr className="bg-purple-50 border-t border-purple-200">
+                            <td className="py-2 px-3 text-sm text-purple-900">
+                              手数料（{cardBrands.find((b) => b.key === editForm.cardBrand)?.label}）
+                            </td>
+                            <td className="text-center">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                                手数料
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums text-sm text-purple-900">{formatCurrency(editCardFeeAmount)}</td>
+                            <td className="py-2 px-3 text-right text-xs text-purple-700">
+                              ✓ 差引済
+                            </td>
+                            <td />
+                          </tr>
+                        )}
                         <tr className="bg-white/60 border-t-2 border-gray-300 font-bold">
                           <td className="py-2 px-3 text-sm text-gray-700">合計</td>
                           <td />
                           <td className="py-2 px-3 text-right tabular-nums text-sm text-gray-900">{formatCurrency(editTotal)}</td>
                           <td className={cn(
                             'py-2 px-3 text-right tabular-nums text-sm font-bold',
-                            paymentTotal > 0 ? (remainingTotal <= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-400'
+                            paymentTotal > 0 || editCardFeeAmount > 0
+                              ? (isFullyCovered ? 'text-green-600' : 'text-red-600')
+                              : 'text-gray-400'
                           )}>
-                            {paymentTotal > 0 ? (
-                              remainingTotal <= 0 ? '✓ 完済' : formatCurrency(remainingTotal)
+                            {(paymentTotal > 0 || editCardFeeAmount > 0) ? (
+                              isFullyCovered ? '✓ 入金済' : formatCurrency(remainingTotal)
                             ) : '—'}
                           </td>
                           <td />
@@ -2055,14 +2094,21 @@ function VoucherList({
                   </div>
 
                   {/* 残高サマリー */}
-                  {paymentTotal > 0 && remainingTotal > 0 && (
+                  {(paymentTotal > 0 || editCardFeeAmount > 0) && !isFullyCovered && remainingTotal > 0 && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
                       <p className="text-orange-800 font-medium">
                         ⚠ このお客様にまだ <span className="font-bold">{formatCurrency(remainingTotal)}</span> の掛け金があります
                       </p>
                     </div>
                   )}
-                  {paymentTotal > 0 && remainingTotal <= 0 && (
+                  {isFullyCovered && editForm.paymentMethod === 'credit_card' && editCardFeeAmount > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                      <p className="text-green-800 font-medium">
+                        ✓ 入金済み — 入金 {formatCurrency(paymentTotal)} + 手数料 {formatCurrency(editCardFeeAmount)} = {formatCurrency(editTotal)}
+                      </p>
+                    </div>
+                  )}
+                  {isFullyCovered && editForm.paymentMethod !== 'credit_card' && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
                       <p className="text-green-800 font-medium">✓ 全額入金済み — 掛け金なし</p>
                     </div>
@@ -2151,6 +2197,21 @@ function VoucherList({
                             </tr>
                           )
                         })}
+                        {/* クレジットカード手数料行（自動表示） */}
+                        {v.payment_method === 'credit_card' && (v.fee_amount ?? 0) > 0 && (
+                          <tr className="bg-purple-50 text-purple-900 border-t border-purple-200">
+                            <td className="py-1.5 px-3">
+                              手数料（{cardBrands.find((b) => b.key === v.card_brand)?.label ?? 'カード'}）
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                                手数料
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-3 text-right tabular-nums">{formatCurrency(v.fee_amount ?? 0)}</td>
+                            <td className="py-1.5 px-2 text-center text-xs text-purple-700">✓ 差引済</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
