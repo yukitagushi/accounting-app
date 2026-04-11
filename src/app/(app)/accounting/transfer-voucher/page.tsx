@@ -61,6 +61,36 @@ const STAMP_OPTIONS: { label: string; amount: number }[] = [
   { label: '小型二輪 (1,100円)', amount: 1100 },
 ]
 
+/** 自賠責保険料テーブル（2025年4月改定） 24ヶ月 */
+const JIBAISEKI_OPTIONS: { label: string; amount: number }[] = [
+  { label: '選択してください', amount: 0 },
+  { label: '普通自動車 24ヶ月 (17,650円)', amount: 17650 },
+  { label: '普通自動車 25ヶ月 (18,160円)', amount: 18160 },
+  { label: '軽自動車 24ヶ月 (17,540円)', amount: 17540 },
+  { label: '軽自動車 25ヶ月 (18,040円)', amount: 18040 },
+  { label: '自家用乗用 12ヶ月 (11,500円)', amount: 11500 },
+  { label: '軽二輪 24ヶ月 (8,760円)', amount: 8760 },
+  { label: '原付 12ヶ月 (6,910円)', amount: 6910 },
+]
+
+/** 検査料（継続検査・整備工場相場） */
+const INSPECTION_FEE_OPTIONS: { label: string; amount: number }[] = [
+  { label: '選択してください', amount: 0 },
+  { label: '軽自動車 検査料 (10,000円)', amount: 10000 },
+  { label: '普通車 検査料 (12,000円)', amount: 12000 },
+  { label: '普通車 検査料 (15,000円)', amount: 15000 },
+  { label: '大型車 検査料 (20,000円)', amount: 20000 },
+]
+
+/** 代行料（車検代行・書類作成料） */
+const AGENT_FEE_OPTIONS: { label: string; amount: number }[] = [
+  { label: '選択してください', amount: 0 },
+  { label: '代行料 軽自動車 (8,000円)', amount: 8000 },
+  { label: '代行料 普通車 (10,000円)', amount: 10000 },
+  { label: '代行料 大型車 (15,000円)', amount: 15000 },
+  { label: '書類作成料 (3,000円)', amount: 3000 },
+]
+
 function isAdvanceLine(description: string): boolean {
   return ADVANCE_KEYWORDS.some((kw) => description.includes(kw))
 }
@@ -642,6 +672,9 @@ function DebitEntryForm({
   const [description, setDescription] = useState('')
   const [weightTax, setWeightTax] = useState<string>('0')  // 選択した重量税額
   const [stamp, setStamp] = useState<string>('0')
+  const [jibaiseki, setJibaiseki] = useState<string>('0')
+  const [inspectionFee, setInspectionFee] = useState<string>('0')
+  const [agentFee, setAgentFee] = useState<string>('0')
   const [lines, setLines] = useState<DebitFormLine[]>(() =>
     Array.from({ length: 4 }, EMPTY_LINE)
   )
@@ -667,42 +700,46 @@ function DebitEntryForm({
 
   function handleWeightTaxChange(tax: number) {
     setWeightTax(String(tax))
-    // 重量税行を自動セット（description が「重量税」の行を更新、なければ追加）
+    upsertLine('重量税', tax)
+  }
+
+  function handleStampChange(amount: number) {
+    setStamp(String(amount))
+    upsertLine('印紙代', amount)
+  }
+
+  /** 指定した項目名の行を更新。なければ最初の空行に、空行がなければ末尾に追加 */
+  function upsertLine(itemName: string, amount: number) {
     setLines((prev) => {
-      const idx = prev.findIndex((l) => l.description === '重量税')
+      const idx = prev.findIndex((l) => l.description === itemName)
       const updated = [...prev]
       if (idx >= 0) {
-        updated[idx] = { description: '重量税', amount: tax > 0 ? String(tax) : '' }
+        updated[idx] = { description: itemName, amount: amount > 0 ? String(amount) : '' }
       } else {
-        // 最初の空行に入れる
         const emptyIdx = prev.findIndex((l) => !l.description && !l.amount)
         if (emptyIdx >= 0) {
-          updated[emptyIdx] = { description: '重量税', amount: tax > 0 ? String(tax) : '' }
+          updated[emptyIdx] = { description: itemName, amount: amount > 0 ? String(amount) : '' }
         } else {
-          updated.push({ description: '重量税', amount: tax > 0 ? String(tax) : '' })
+          updated.push({ description: itemName, amount: amount > 0 ? String(amount) : '' })
         }
       }
       return updated
     })
   }
 
-  function handleStampChange(amount: number) {
-    setStamp(String(amount))
-    setLines((prev) => {
-      const idx = prev.findIndex((l) => l.description === '印紙代')
-      const updated = [...prev]
-      if (idx >= 0) {
-        updated[idx] = { description: '印紙代', amount: amount > 0 ? String(amount) : '' }
-      } else {
-        const emptyIdx = prev.findIndex((l) => !l.description && !l.amount)
-        if (emptyIdx >= 0) {
-          updated[emptyIdx] = { description: '印紙代', amount: amount > 0 ? String(amount) : '' }
-        } else {
-          updated.push({ description: '印紙代', amount: amount > 0 ? String(amount) : '' })
-        }
-      }
-      return updated
-    })
+  function handleJibaisekiChange(amount: number) {
+    setJibaiseki(String(amount))
+    upsertLine('自賠責', amount)
+  }
+
+  function handleInspectionFeeChange(amount: number) {
+    setInspectionFee(String(amount))
+    upsertLine('検査料', amount)
+  }
+
+  function handleAgentFeeChange(amount: number) {
+    setAgentFee(String(amount))
+    upsertLine('代行料', amount)
   }
 
   async function handleSave() {
@@ -741,6 +778,9 @@ function DebitEntryForm({
       setDate(todayString())
       setWeightTax('0')
       setStamp('0')
+      setJibaiseki('0')
+      setInspectionFee('0')
+      setAgentFee('0')
       setLines(Array.from({ length: 4 }, EMPTY_LINE))
       onSaved()
     } catch {
@@ -787,15 +827,15 @@ function DebitEntryForm({
           />
         </div>
 
-        {/* 法定費用クイック入力 */}
+        {/* 法定費用クイック入力（立替） */}
         <div className="bg-orange-50 rounded-xl border border-orange-100 p-4 space-y-3">
           <p className="text-xs font-bold text-orange-700 flex items-center gap-1.5">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
             法定費用クイック入力（立替）
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">重量税（車両区分）</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">重量税</label>
               <select
                 value={weightTax}
                 onChange={(e) => handleWeightTaxChange(parseInt(e.target.value))}
@@ -809,7 +849,21 @@ function DebitEntryForm({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">印紙代（令和7年4月改定）</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">自賠責保険料</label>
+              <select
+                value={jibaiseki}
+                onChange={(e) => handleJibaisekiChange(parseInt(e.target.value))}
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+              >
+                {JIBAISEKI_OPTIONS.map((opt) => (
+                  <option key={opt.label} value={opt.amount}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">印紙代</label>
               <select
                 value={stamp}
                 onChange={(e) => handleStampChange(parseInt(e.target.value))}
@@ -825,6 +879,47 @@ function DebitEntryForm({
           </div>
           <p className="text-xs text-orange-600">
             選択すると明細行に自動入力されます。重量税・自賠責・印紙代は立替（±0）として記録されます。
+          </p>
+        </div>
+
+        {/* 技術料クイック入力（売上） */}
+        <div className="bg-green-50 rounded-xl border border-green-100 p-4 space-y-3">
+          <p className="text-xs font-bold text-green-700 flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+            技術料クイック入力（売上）
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">検査料</label>
+              <select
+                value={inspectionFee}
+                onChange={(e) => handleInspectionFeeChange(parseInt(e.target.value))}
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-400"
+              >
+                {INSPECTION_FEE_OPTIONS.map((opt) => (
+                  <option key={opt.label} value={opt.amount}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">代行料</label>
+              <select
+                value={agentFee}
+                onChange={(e) => handleAgentFeeChange(parseInt(e.target.value))}
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-400"
+              >
+                {AGENT_FEE_OPTIONS.map((opt) => (
+                  <option key={opt.label} value={opt.amount}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-green-700">
+            検査料・代行料は売上として記録されます。
           </p>
         </div>
 
