@@ -1,16 +1,16 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { updateSession } from '@/lib/supabase/middleware'
+import type { NextRequest } from 'next/server'
 
+/**
+ * Next.js 16 Proxy (旧middleware)
+ * Supabase認証セッションを検証し、未認証ユーザーは /login にリダイレクト
+ */
 export async function proxy(request: NextRequest) {
-  // Demo mode - no authentication required
-  // All pages are freely accessible
-  if (request.nextUrl.pathname === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-  return NextResponse.next()
+  return await updateSession(request)
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }

@@ -9,11 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 
-const DEMO_ACCOUNTS = [
-  { email: 'admin@autoaccount.demo', password: 'demo1234', role: '管理者', branch: '本社' },
-  { email: 'staff@autoaccount.demo', password: 'demo1234', role: 'スタッフ', branch: '東支店' },
-]
-
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -46,11 +41,6 @@ export default function LoginPage() {
       setError('ログインに失敗しました。')
       setLoading(false)
     }
-  }
-
-  function handleDemoLogin(account: typeof DEMO_ACCOUNTS[0]) {
-    setEmail(account.email)
-    setPassword(account.password)
   }
 
   return (
@@ -162,31 +152,6 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* Demo accounts */}
-            <div className="mt-6 pt-5 border-t border-white/10">
-              <p className="text-xs text-blue-200/60 mb-3 text-center">デモアカウントでログイン</p>
-              <div className="space-y-2">
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => handleDemoLogin(acc)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-left group"
-                  >
-                    <div>
-                      <div className="text-sm text-white font-medium">{acc.email}</div>
-                      <div className="text-xs text-blue-200/50">パスワード: ••••••••</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-400/20 text-indigo-200 border border-indigo-400/20">
-                        {acc.role}
-                      </span>
-                      <div className="text-xs text-blue-200/40 mt-0.5">{acc.branch}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
           </CardContent>
         </Card>
 

@@ -10,12 +10,19 @@ const BRANCHES = [
 export async function POST() {
   const supabase = await createClient()
 
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { error } = await supabase
     .from('branches')
     .upsert(BRANCHES, { onConflict: 'id' })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('branches/init upsert failed:', error)
+    return NextResponse.json({ error: 'Failed to initialize branches' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, branches: BRANCHES })
