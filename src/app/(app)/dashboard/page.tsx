@@ -31,9 +31,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
-import { getInvoices, getJournalEntries, getVehicleInspections, getPayments } from '@/lib/supabase/database'
+import { getInvoices, getJournalEntries, getVehicleInspections, getPayments, getTransferVouchers, getTrialBalanceFromVouchers } from '@/lib/supabase/database'
+import type { TrialBalanceRow } from '@/lib/supabase/database'
 import { useBranchStore } from '@/hooks/use-branch'
-import type { Invoice, JournalEntry, VehicleInspection, Payment } from '@/lib/types'
+import type { Invoice, JournalEntry, VehicleInspection, Payment, TransferVoucher } from '@/lib/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,12 @@ export default function DashboardPage() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
   const [vehicleInspections, setVehicleInspections] = useState<VehicleInspection[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [vouchers, setVouchers] = useState<TransferVoucher[]>([])
+  const [trialRows, setTrialRows] = useState<TrialBalanceRow[]>([])
   const [loading, setLoading] = useState(true)
+
+  const now = new Date()
+  const thisMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
   useEffect(() => {
     setLoading(true)
@@ -127,88 +133,67 @@ export default function DashboardPage() {
       getJournalEntries(branchId),
       getVehicleInspections(branchId),
       getPayments(branchId),
-    ]).then(([invs, entries, vis, pays]) => {
+      getTransferVouchers(branchId, 'debit'),
+      getTrialBalanceFromVouchers(branchId, thisMonthStr),
+    ]).then(([invs, entries, vis, pays, vchs, tb]) => {
       setInvoices(invs)
       setJournalEntries(entries)
       setVehicleInspections(vis)
       setPayments(pays)
+      setVouchers(vchs)
+      setTrialRows(tb)
       setLoading(false)
     }).catch(() => {
       setLoading(false)
     })
-  }, [branchId])
+  }, [branchId, thisMonthStr])
 
-  // Compute KPIs
-  const now = new Date()
-  const thisMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`
+  // 試算表ベースの今月売上（純額）- 収益カテゴリの合計
+  const thisMonthNetRevenue = trialRows
+    .filter((r) => r.category === 'revenue')
+    .reduce((s, r) => s + r.credit_balance, 0)
 
-  const thisMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(thisMonthStr))
-  const prevMonthInvoices = invoices.filter((i) => i.issue_date?.startsWith(prevMonthStr))
-
-  // Net revenue: exclude pass-through items (立替金) from invoice totals
-  // Pass-through categories: jibaiseki, weight_tax, stamp (tax_rate = 0 items)
-  const thisMonthNetRevenue = thisMonthInvoices.reduce((sum, inv) => {
-    if (!inv.line_items || inv.line_items.length === 0) return sum + (inv.total ?? 0)
-    const revenue = inv.line_items
-      .filter(li => (li.tax_rate ?? 0) > 0) // Revenue items have tax > 0
-      .reduce((s, li) => s + (li.amount ?? 0), 0)
-    return sum + revenue
+  // 振替伝票ベースの未回収
+  const unsettledVouchers = vouchers.filter((v) => v.status === 'unsettled')
+  const unsettledTotal = unsettledVouchers.reduce((s, v) => {
+    const lineTotalPaid = (v.lines ?? []).reduce((sum, l) => sum + (l.payment_amount ?? 0), 0)
+    const fee = v.fee_amount ?? 0
+    return s + Math.max(0, v.total_amount - lineTotalPaid - fee)
   }, 0)
-
-  const prevMonthNetRevenue = prevMonthInvoices.reduce((sum, inv) => {
-    if (!inv.line_items || inv.line_items.length === 0) return sum + (inv.total ?? 0)
-    const revenue = inv.line_items
-      .filter(li => (li.tax_rate ?? 0) > 0)
-      .reduce((s, li) => s + (li.amount ?? 0), 0)
-    return sum + revenue
-  }, 0)
-
-  const netRevenueTrend = prevMonthNetRevenue > 0
-    ? ((thisMonthNetRevenue - prevMonthNetRevenue) / prevMonthNetRevenue) * 100
-    : 0
 
   const unpaidInvoices = invoices.filter((i) => ['sent', 'overdue', 'partial'].includes(i.status))
   const unpaidTotal = unpaidInvoices.reduce((s, i) => s + ((i.total ?? 0) - (i.paid_amount ?? 0)), 0)
-
-  const thisMonthEntries = journalEntries.filter((e) => e.entry_date?.startsWith(thisMonthStr))
-  const activeInspections = vehicleInspections.filter((vi) => vi.status === 'pending' || vi.status === 'in_progress')
 
   const recentEntries = [...journalEntries]
     .sort((a, b) => (b.entry_date ?? '').localeCompare(a.entry_date ?? ''))
     .slice(0, 5)
 
-  // Build bar chart data: last 6 months (net revenue excluding pass-through items)
+  // 月次売上推移: 振替伝票の各月の売上（手数料差引後の純額）を集計
   const barData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const monthInvoices = invoices.filter((inv) => inv.issue_date?.startsWith(monthStr))
-    const revenue = monthInvoices.reduce((s, inv) => {
-      if (!inv.line_items || inv.line_items.length === 0) return s + (inv.total ?? 0)
-      return s + inv.line_items
-        .filter(li => (li.tax_rate ?? 0) > 0)
-        .reduce((sum, li) => sum + (li.amount ?? 0), 0)
+    const monthVouchers = vouchers.filter((v) => v.voucher_date?.startsWith(monthStr))
+    const revenue = monthVouchers.reduce((s, v) => {
+      const salesLines = (v.lines ?? []).filter((l) => l.line_type === 'sales')
+      const grossSales = salesLines.reduce((sum, l) => sum + l.amount, 0)
+      const fee = v.payment_method === 'credit_card' ? (v.fee_amount ?? 0) : 0
+      return s + (grossSales - fee)
     }, 0)
     return { month: getMonthLabel(d), revenue }
   })
 
-  // Build pie chart data from invoice categories (use line_items category if available)
-  const categoryMap: Record<string, number> = {}
-  invoices.forEach((inv) => {
-    if (inv.line_items && inv.line_items.length > 0) {
-      inv.line_items.forEach((li) => {
-        const cat = li.category || 'その他'
-        categoryMap[cat] = (categoryMap[cat] ?? 0) + li.amount
-      })
-    } else {
-      categoryMap['その他'] = (categoryMap['その他'] ?? 0) + inv.total
-    }
-  })
-  const pieData = Object.entries(categoryMap)
-    .map(([name, value]) => ({ name, value }))
+  // 前月の純売上を barData から取得
+  const prevMonthBar = barData[4]?.revenue ?? 0
+  const netRevenueTrend = prevMonthBar > 0
+    ? ((thisMonthNetRevenue - prevMonthBar) / prevMonthBar) * 100
+    : 0
+
+  // 売上カテゴリ別（試算表の収益項目）
+  const pieData = trialRows
+    .filter((r) => r.category === 'revenue')
+    .map((r) => ({ name: r.account_name, value: r.credit_balance }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 4)
+    .slice(0, 5)
 
   if (loading) {
     return (
@@ -239,10 +224,10 @@ export default function DashboardPage() {
         <StatCard
           title="今月の実売上"
           value={formatYen(thisMonthNetRevenue)}
-          sub={`${now.getFullYear()}年${now.getMonth() + 1}月（立替金除く）`}
+          sub={`${now.getFullYear()}年${now.getMonth() + 1}月（試算表ベース）`}
           iconBg="bg-indigo-100"
           icon={<TrendingUp className="w-5 h-5 text-indigo-600" />}
-          trend={prevMonthNetRevenue > 0 ? {
+          trend={prevMonthBar > 0 ? {
             positive: netRevenueTrend > 0,
             text: `前月比 ${netRevenueTrend > 0 ? '+' : ''}${netRevenueTrend.toFixed(1)}%`,
           } : undefined}
@@ -255,18 +240,18 @@ export default function DashboardPage() {
           icon={<Receipt className="w-5 h-5 text-amber-600" />}
         />
         <StatCard
-          title="今月の仕訳数"
-          value={`${thisMonthEntries.length} 件`}
-          sub={`${now.getMonth() + 1}月合計`}
-          iconBg="bg-emerald-100"
-          icon={<BookOpen className="w-5 h-5 text-emerald-600" />}
+          title="未回収"
+          value={formatYen(unsettledTotal)}
+          sub={`${unsettledVouchers.length} 件の未入金伝票`}
+          iconBg="bg-orange-100"
+          icon={<AlertCircle className="w-5 h-5 text-orange-600" />}
         />
         <StatCard
-          title="車検進行中"
-          value={`${activeInspections.length} 件`}
-          sub="未完了の車検"
-          iconBg="bg-sky-100"
-          icon={<Car className="w-5 h-5 text-sky-600" />}
+          title="当月振替伝票"
+          value={`${vouchers.filter((v) => v.voucher_date?.startsWith(thisMonthStr)).length} 件`}
+          sub={`${now.getMonth() + 1}月分`}
+          iconBg="bg-emerald-100"
+          icon={<FileText className="w-5 h-5 text-emerald-600" />}
         />
       </motion.div>
 
