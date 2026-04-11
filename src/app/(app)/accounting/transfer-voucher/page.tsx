@@ -1414,6 +1414,94 @@ function BalanceCheck({
   )
 }
 
+// ── Card Fee Editor Modal ────────────────────────────────────────────────────
+
+function CardFeeEditorModal({
+  brands,
+  onSave,
+  onClose,
+}: {
+  brands: { key: CardBrandKey; label: string; defaultRate: number }[]
+  onSave: (fees: Record<CardBrandKey, number>) => void
+  onClose: () => void
+}) {
+  const [rates, setRates] = useState<Record<CardBrandKey, string>>(() => {
+    const init: Partial<Record<CardBrandKey, string>> = {}
+    brands.forEach((b) => { init[b.key] = String(b.defaultRate) })
+    return init as Record<CardBrandKey, string>
+  })
+
+  function handleSave() {
+    const fees: Partial<Record<CardBrandKey, number>> = {}
+    for (const b of brands) {
+      const v = parseFloat(rates[b.key])
+      fees[b.key] = isNaN(v) ? b.defaultRate : v
+    }
+    onSave(fees as Record<CardBrandKey, number>)
+  }
+
+  function resetDefaults() {
+    const init: Partial<Record<CardBrandKey, string>> = {}
+    DEFAULT_CARD_BRANDS.forEach((b) => { init[b.key] = String(b.defaultRate) })
+    setRates(init as Record<CardBrandKey, string>)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-900">カード手数料編集</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          各カード会社との契約に合わせて手数料率を設定してください。
+        </p>
+
+        <div className="space-y-2">
+          {brands.map((b) => (
+            <div key={b.key} className="flex items-center gap-3">
+              <label className="flex-1 text-sm font-medium text-gray-800">{b.label}</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={rates[b.key]}
+                  onChange={(e) => setRates((p) => ({ ...p, [b.key]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                  className="h-9 w-24 rounded-lg border border-gray-200 bg-white pl-3 pr-6 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <button
+            onClick={resetDefaults}
+            className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+          >
+            デフォルトに戻す
+          </button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              キャンセル
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              保存
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Tab 5: Voucher List ──────────────────────────────────────────────────────
 
 interface EditFormLine {
@@ -1433,8 +1521,10 @@ interface EditForm {
   feeRateInput: string  // パーセント表示（例: "3.0"）
 }
 
-/** カードブランド別の標準手数料率 */
-const CARD_BRANDS: { key: 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other'; label: string; defaultRate: number }[] = [
+type CardBrandKey = 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'other'
+
+/** カードブランド別の標準手数料率（初期値。localStorage で上書き可能） */
+const DEFAULT_CARD_BRANDS: { key: CardBrandKey; label: string; defaultRate: number }[] = [
   { key: 'visa', label: 'VISA', defaultRate: 3.3 },
   { key: 'mastercard', label: 'Mastercard', defaultRate: 3.3 },
   { key: 'jcb', label: 'JCB', defaultRate: 3.5 },
@@ -1442,6 +1532,32 @@ const CARD_BRANDS: { key: 'visa' | 'mastercard' | 'jcb' | 'amex' | 'diners' | 'o
   { key: 'diners', label: 'Diners Club', defaultRate: 4.0 },
   { key: 'other', label: 'その他', defaultRate: 3.0 },
 ]
+
+const CARD_FEES_STORAGE_KEY = 'card-brand-fees-v1'
+
+/** localStorage からカード手数料設定を読み込み（なければデフォルト） */
+function loadCardBrands(): { key: CardBrandKey; label: string; defaultRate: number }[] {
+  if (typeof window === 'undefined') return DEFAULT_CARD_BRANDS
+  try {
+    const saved = localStorage.getItem(CARD_FEES_STORAGE_KEY)
+    if (!saved) return DEFAULT_CARD_BRANDS
+    const parsed = JSON.parse(saved) as Record<string, number>
+    return DEFAULT_CARD_BRANDS.map((b) => ({
+      ...b,
+      defaultRate: parsed[b.key] ?? b.defaultRate,
+    }))
+  } catch {
+    return DEFAULT_CARD_BRANDS
+  }
+}
+
+/** カード手数料設定を localStorage に保存 */
+function saveCardBrandFees(fees: Record<CardBrandKey, number>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(CARD_FEES_STORAGE_KEY, JSON.stringify(fees))
+  } catch {}
+}
 
 const EMPTY_EDIT_LINE = (): EditFormLine => ({ description: '', amount: '', line_type: 'sales' })
 
@@ -1470,6 +1586,20 @@ function VoucherList({
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
+  const [cardBrands, setCardBrands] = useState(DEFAULT_CARD_BRANDS)
+  const [feeEditorOpen, setFeeEditorOpen] = useState(false)
+
+  // 初回マウント時にlocalStorageからカード手数料を読み込む
+  useEffect(() => {
+    setCardBrands(loadCardBrands())
+  }, [])
+
+  function handleSaveFees(newFees: Record<CardBrandKey, number>) {
+    saveCardBrandFees(newFees)
+    setCardBrands(DEFAULT_CARD_BRANDS.map((b) => ({ ...b, defaultRate: newFees[b.key] ?? b.defaultRate })))
+    toast.success('カード手数料を保存しました')
+    setFeeEditorOpen(false)
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -1609,6 +1739,14 @@ function VoucherList({
 
   return (
     <div className="space-y-4">
+      {feeEditorOpen && (
+        <CardFeeEditorModal
+          brands={cardBrands}
+          onSave={handleSaveFees}
+          onClose={() => setFeeEditorOpen(false)}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
@@ -1773,9 +1911,18 @@ function VoucherList({
                       const netSales = salesTotal - feeAmount
                       return (
                         <div className="pt-2 border-t border-blue-100 space-y-2">
-                          <label className="block text-xs font-bold text-blue-800">カードブランド</label>
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-blue-800">カードブランド</label>
+                            <button
+                              onClick={() => setFeeEditorOpen(true)}
+                              className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              手数料編集
+                            </button>
+                          </div>
                           <div className="grid grid-cols-3 gap-2">
-                            {CARD_BRANDS.map((b) => (
+                            {cardBrands.map((b) => (
                               <button
                                 key={b.key}
                                 onClick={() => setEditForm((p) => p ? { ...p, cardBrand: b.key, feeRateInput: String(b.defaultRate) } : p)}
