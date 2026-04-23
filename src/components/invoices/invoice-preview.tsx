@@ -165,12 +165,27 @@ export function InvoicePreview({
           </div>
 
           {/* Company block */}
-          <div style={{ textAlign: 'right', fontSize: 8, maxWidth: '42%' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2 }}>{companyName}</div>
-            <div style={{ marginBottom: 1 }}>{'代表取締役 ' + companyRepresentative}</div>
-            <div style={{ marginBottom: 1 }}>{companyAddress}</div>
-            <div style={{ marginBottom: 1 }}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</div>
-            <div style={{ marginBottom: 4 }}>{'登録番号 ' + companyRegistrationNumber}</div>
+          <div style={{ textAlign: 'right', fontSize: 8, maxWidth: '50%' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2 }}>{companyName}</div>
+                <div style={{ marginBottom: 1 }}>{'代表取締役 ' + companyRepresentative}</div>
+                <div style={{ marginBottom: 1 }}>{companyAddress}</div>
+                <div style={{ marginBottom: 1 }}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</div>
+                <div style={{ marginBottom: 0 }}>{'登録番号 ' + companyRegistrationNumber}</div>
+              </div>
+              {/* 角印 */}
+              <img
+                src="/seal.png"
+                alt="角印"
+                style={{
+                  width: 56, height: 56, objectFit: 'contain',
+                  opacity: 0.85, transform: 'rotate(-3deg)',
+                  marginTop: 4, flexShrink: 0,
+                }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            </div>
           </div>
         </div>
 

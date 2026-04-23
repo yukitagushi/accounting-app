@@ -14,8 +14,9 @@ const s = StyleSheet.create({
   companyBlock: { alignItems: 'flex-end', maxWidth: '42%' },
   companyName: { fontSize: 10, fontWeight: 700, marginBottom: 2 },
   companyDetail: { fontSize: 7, color: '#333', marginBottom: 1 },
-  stampCircle: { width: 36, height: 36, borderWidth: 2, borderColor: '#cc0000', borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  stampText: { fontSize: 10, color: '#cc0000', fontWeight: 700 },
+  sealWrap: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 },
+  sealBox: { width: 44, height: 44, borderWidth: 2, borderColor: 'rgba(190,30,30,0.75)', borderRadius: 2, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', marginTop: 2, transform: 'rotate(-3deg)' },
+  sealChar: { width: '50%', textAlign: 'center', fontSize: 9, color: 'rgba(190,30,30,0.75)', fontWeight: 700, lineHeight: 1.15 },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, fontSize: 7 },
   vehicleTable: { marginBottom: 6 },
   vehicleRow: { flexDirection: 'row' },
@@ -108,12 +109,24 @@ export function EstimatePDF({
             {estimate.customer_address ? <Text style={s.customerDetail}>{estimate.customer_address}</Text> : null}
             {estimate.customer_code ? <Text style={s.customerDetail}>{'\u9867\u5ba2\u30b3\u30fc\u30c9: ' + estimate.customer_code}</Text> : null}
           </View>
-          <View style={s.companyBlock}>
-            <Text style={s.companyName}>{companyName}</Text>
-            <Text style={s.companyDetail}>{'\u4ee3\u8868\u53d6\u7de0\u5f79 ' + companyRepresentative}</Text>
-            <Text style={s.companyDetail}>{companyAddress}</Text>
-            <Text style={s.companyDetail}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</Text>
-            <Text style={s.companyDetail}>{'\u767b\u9332\u756a\u53f7 ' + companyRegistrationNumber}</Text>
+          <View style={s.sealWrap}>
+            <View style={s.companyBlock}>
+              <Text style={s.companyName}>{companyName}</Text>
+              <Text style={s.companyDetail}>{'\u4ee3\u8868\u53d6\u7de0\u5f79 ' + companyRepresentative}</Text>
+              <Text style={s.companyDetail}>{companyAddress}</Text>
+              <Text style={s.companyDetail}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</Text>
+              <Text style={s.companyDetail}>{'\u767b\u9332\u756a\u53f7 ' + companyRegistrationNumber}</Text>
+            </View>
+            <View style={s.sealBox}>
+              <Text style={s.sealChar}>{'\u7af9'}</Text>
+              <Text style={s.sealChar}>{'\u6709'}</Text>
+              <Text style={s.sealChar}>{'\u82b1'}</Text>
+              <Text style={s.sealChar}>{'\u9650'}</Text>
+              <Text style={s.sealChar}>{'\u81ea'}</Text>
+              <Text style={s.sealChar}>{'\u4f1a'}</Text>
+              <Text style={s.sealChar}>{'\u5de5'}</Text>
+              <Text style={s.sealChar}>{'\u793e'}</Text>
+            </View>
           </View>
         </View>
 
