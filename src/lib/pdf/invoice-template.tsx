@@ -1,6 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import type { Invoice } from '@/lib/types'
 import { registerJapaneseFonts } from './register-fonts'
+import { SEAL_IMAGE } from './seal-data'
 
 registerJapaneseFonts()
 
@@ -124,7 +125,7 @@ export function InvoicePDF({
               <Text style={s.companyDetail}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</Text>
               <Text style={s.companyDetail}>{'\u767b\u9332\u756a\u53f7 ' + companyRegistrationNumber}</Text>
             </View>
-            <Image style={s.sealImage} src="/seal.png" />
+            <Image style={s.sealImage} src={SEAL_IMAGE} />
           </View>
         </View>
 
