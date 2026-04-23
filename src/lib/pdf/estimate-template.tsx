@@ -63,10 +63,10 @@ export function EstimatePDF({
   estimate,
   companyName = '有限会社 竹花自工',
   companyAddress = '〒028-5642 岩手県下閉伊郡岩泉町穴沢大宮内43-5',
-  companyPhone = '0194-52-3955',
-  companyFax = '0194-52-3956',
+  companyPhone = '0194-25-4793',
+  companyFax = '0194-32-3015',
   companyRepresentative = '竹花 将昭',
-  companyRegistrationNumber = 'T1234567890123',
+  companyRegistrationNumber = 'T8400002011138',
 }: EstimatePDFProps) {
   const lines = estimate.line_items ?? []
   const partsSubtotal = lines.reduce((sum, l) => sum + (l.parts_amount ?? 0), 0)

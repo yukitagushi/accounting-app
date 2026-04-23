@@ -68,10 +68,10 @@ export function InvoicePDF({
   invoice,
   companyName = '有限会社 竹花自工',
   companyAddress = '〒028-5642 岩手県下閉伊郡岩泉町穴沢大宮内43-5',
-  companyPhone = '0194-52-3955',
-  companyFax = '0194-52-3956',
+  companyPhone = '0194-25-4793',
+  companyFax = '0194-32-3015',
   companyRepresentative = '竹花 将昭',
-  companyRegistrationNumber = 'T1234567890123',
+  companyRegistrationNumber = 'T8400002011138',
   bankInfo = '\u5ca9\u624b\u9280\u884c \u4e45\u6148\u652f\u5e97 \u666e\u901a 1234567',
 }: InvoicePDFProps) {
   const lines = invoice.line_items ?? []
