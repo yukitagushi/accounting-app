@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import type { Invoice } from '@/lib/types'
 import { registerJapaneseFonts } from './register-fonts'
 
@@ -15,8 +15,7 @@ const s = StyleSheet.create({
   companyName: { fontSize: 10, fontWeight: 700, marginBottom: 2 },
   companyDetail: { fontSize: 7, color: '#333', marginBottom: 1 },
   sealWrap: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 },
-  sealBox: { width: 44, height: 44, borderWidth: 2, borderColor: 'rgba(190,30,30,0.75)', borderRadius: 2, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', marginTop: 2, transform: 'rotate(-3deg)' },
-  sealChar: { width: '50%', textAlign: 'center', fontSize: 9, color: 'rgba(190,30,30,0.75)', fontWeight: 700, lineHeight: 1.15 },
+  sealImage: { width: 44, height: 44, marginTop: 2, opacity: 0.85 },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, fontSize: 7 },
   // Vehicle info
   vehicleTable: { marginBottom: 6 },
@@ -125,16 +124,7 @@ export function InvoicePDF({
               <Text style={s.companyDetail}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</Text>
               <Text style={s.companyDetail}>{'\u767b\u9332\u756a\u53f7 ' + companyRegistrationNumber}</Text>
             </View>
-            <View style={s.sealBox}>
-              <Text style={s.sealChar}>{'\u7af9'}</Text>
-              <Text style={s.sealChar}>{'\u6709'}</Text>
-              <Text style={s.sealChar}>{'\u82b1'}</Text>
-              <Text style={s.sealChar}>{'\u9650'}</Text>
-              <Text style={s.sealChar}>{'\u81ea'}</Text>
-              <Text style={s.sealChar}>{'\u4f1a'}</Text>
-              <Text style={s.sealChar}>{'\u5de5'}</Text>
-              <Text style={s.sealChar}>{'\u793e'}</Text>
-            </View>
+            <Image style={s.sealImage} src="/seal.png" />
           </View>
         </View>
 
