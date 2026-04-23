@@ -96,7 +96,7 @@ export const MOCK_BRANCHES: Branch[] = [
 export const MOCK_CURRENT_USER: Profile = {
   id: 'user-1',
   email: 'admin@autoaccount.demo',
-  display_name: '竹花 太郎',
+  display_name: '竹花 将昭',
   branch_id: '00000000-0000-0000-0000-000000000001',
   role: 'admin',
   created_at: '2024-01-01T00:00:00Z',

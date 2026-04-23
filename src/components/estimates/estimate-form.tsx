@@ -636,7 +636,7 @@ export function EstimateForm({ initialData, mode }: EstimateFormProps) {
             </div>
             <div className="space-y-1.5">
               <Label>担当者</Label>
-              <Input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="例: 竹花 太郎" />
+              <Input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="例: 竹花 将昭" />
             </div>
           </div>
         )}

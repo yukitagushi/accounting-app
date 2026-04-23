@@ -66,11 +66,11 @@ interface InvoicePDFProps {
 
 export function InvoicePDF({
   invoice,
-  companyName = '\u6709\u9650\u4f1a\u793e \u7af9\u82b1\u81ea\u5de5',
-  companyAddress = '\u3012028-0041 \u5ca9\u624b\u770c\u4e45\u6148\u5e02\u9577\u5185\u753a',
+  companyName = '有限会社 竹花自工',
+  companyAddress = '〒028-5642 岩手県下閉伊郡岩泉町穴沢大宮内43-5',
   companyPhone = '0194-52-3955',
   companyFax = '0194-52-3956',
-  companyRepresentative = '\u7af9\u82b1 \u592a\u90ce',
+  companyRepresentative = '竹花 将昭',
   companyRegistrationNumber = 'T1234567890123',
   bankInfo = '\u5ca9\u624b\u9280\u884c \u4e45\u6148\u652f\u5e97 \u666e\u901a 1234567',
 }: InvoicePDFProps) {
@@ -122,9 +122,6 @@ export function InvoicePDF({
             <Text style={s.companyDetail}>{companyAddress}</Text>
             <Text style={s.companyDetail}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</Text>
             <Text style={s.companyDetail}>{'\u767b\u9332\u756a\u53f7 ' + companyRegistrationNumber}</Text>
-            <View style={s.stampCircle}>
-              <Text style={s.stampText}>{'\u5370'}</Text>
-            </View>
           </View>
         </View>
 

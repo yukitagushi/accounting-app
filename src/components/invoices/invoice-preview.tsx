@@ -62,10 +62,10 @@ export function InvoicePreview({
   discount = 0,
   notes,
   companyName = '有限会社 竹花自工',
-  companyAddress = '〒028-0041 岩手県久慈市長内町',
+  companyAddress = '〒028-5642 岩手県下閉伊郡岩泉町穴沢大宮内43-5',
   companyPhone = '0194-52-3955',
   companyFax = '0194-52-3956',
-  companyRepresentative = '竹花 太郎',
+  companyRepresentative = '竹花 将昭',
   companyRegistrationNumber = 'T1234567890123',
   vehicleName,
   vehicleNumber,
@@ -171,16 +171,6 @@ export function InvoicePreview({
             <div style={{ marginBottom: 1 }}>{companyAddress}</div>
             <div style={{ marginBottom: 1 }}>{'TEL ' + companyPhone + '  FAX ' + companyFax}</div>
             <div style={{ marginBottom: 4 }}>{'登録番号 ' + companyRegistrationNumber}</div>
-            {/* Stamp circle */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{
-                width: 40, height: 40, border: '2px solid #c00', borderRadius: 20,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#c00', fontSize: 12, fontWeight: 700,
-              }}>
-                {'印'}
-              </div>
-            </div>
           </div>
         </div>
 
