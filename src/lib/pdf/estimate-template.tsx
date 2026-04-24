@@ -180,8 +180,9 @@ export function EstimatePDF({
 
         <View style={s.bottomRow}>
           <View style={s.bottomLeft}>
-            <Text style={{ marginBottom: 3 }}>{'\u898b\u7a4d\u6709\u52b9\u671f\u9650: ' + estimate.valid_until}</Text>
-            <Text style={{ marginTop: 8, fontSize: 6, color: '#555' }}>{'\u304a\u6c17\u8efd\u306b\u304a\u554f\u3044\u5408\u308f\u305b\u304f\u3060\u3055\u3044'}</Text>
+            <Text style={{ marginBottom: 3 }}>{'見積有効期限: ' + estimate.valid_until}</Text>
+            <Text style={{ marginTop: 8, fontSize: 7, fontWeight: 700 }}>{'[振込口座]'}</Text>
+            <Text style={{ fontSize: 7 }}>{'岩手銀行・岩泉支店（普）0192367'}</Text>
           </View>
           <View style={s.bottomRight}>
             <View style={s.totalsRow}>

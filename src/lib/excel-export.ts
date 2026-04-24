@@ -7,7 +7,7 @@ const DEFAULT_COMPANY_REP = '代表取締役 竹花 将昭'
 const DEFAULT_COMPANY_ADDRESS = '〒028-5642 岩手県下閉伊郡岩泉町穴沢大宮内43-5'
 const DEFAULT_COMPANY_TEL = 'TEL 0194-25-4793  FAX 0194-32-3015'
 const DEFAULT_COMPANY_REG = '登録番号 T8400002011138'
-const DEFAULT_BANK_INFO = '岩手銀行 久慈支店 普通 1234567 ユ）タケハナジコウ'
+const DEFAULT_BANK_INFO = '岩手銀行・岩泉支店（普）0192367'
 
 export type CompanyInfo = {
   name?: string

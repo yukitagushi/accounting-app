@@ -75,7 +75,7 @@ export function InvoicePreview({
   deliveryDate,
   deliveryCategory,
   staffName,
-  bankInfo = '岩手銀行 久慈支店 普通 1234567 ユ）タケハナジコウ',
+  bankInfo = '岩手銀行・岩泉支店（普）0192367',
 }: InvoicePreviewProps) {
   const isEstimate = documentType === 'estimate'
   const title = isEstimate ? '御 見 積 書' : '御 請 求 書'
@@ -305,8 +305,8 @@ export function InvoicePreview({
               {'お気軽にお問い合わせください'}
             </div>
             <div style={{ marginTop: 8, fontSize: 7.5 }}>
-              <div style={{ fontWeight: 700, marginBottom: 2 }}>{'振込口座'}</div>
-              <div>{bankInfo}</div>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>{'[振込口座]'}</div>
+              <div style={{ whiteSpace: 'pre-line' }}>{bankInfo}</div>
             </div>
           </div>
 

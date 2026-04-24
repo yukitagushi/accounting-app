@@ -73,7 +73,7 @@ export function InvoicePDF({
   companyFax = '0194-32-3015',
   companyRepresentative = '竹花 将昭',
   companyRegistrationNumber = 'T8400002011138',
-  bankInfo = '\u5ca9\u624b\u9280\u884c \u4e45\u6148\u652f\u5e97 \u666e\u901a 1234567',
+  bankInfo = '岩手銀行・岩泉支店（普）0192367',
 }: InvoicePDFProps) {
   const lines = invoice.line_items ?? []
   const partsSubtotal = lines.reduce((sum, l) => sum + (l.parts_amount ?? 0), 0)
