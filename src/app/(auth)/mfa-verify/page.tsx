@@ -2,57 +2,76 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calculator, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Calculator, Shield, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+export default function MfaVerifyPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (code.length !== 6) {
+      setError('6桁のコードを入力してください')
+      return
+    }
     setLoading(true)
     setError(null)
 
     try {
       const supabase = createClient()
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
 
-      if (authError) {
-        setError('メールアドレスまたはパスワードが正しくありません。')
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
+      if (listError || !factors) {
+        setError('認証情報の取得に失敗しました')
         setLoading(false)
         return
       }
 
-      // Check if MFA is required
-      const { data: factors } = await supabase.auth.mfa.listFactors()
-      const hasMFA = (factors?.totp ?? []).some((f) => f.status === 'verified')
-      if (hasMFA) {
-        router.push('/mfa-verify')
-      } else {
-        router.push('/dashboard')
+      const totpFactor = (factors.totp ?? []).find((f) => f.status === 'verified')
+      if (!totpFactor) {
+        setError('MFAファクターが見つかりません')
+        setLoading(false)
+        return
       }
+
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: totpFactor.id,
+      })
+      if (challengeError || !challenge) {
+        setError('認証チャレンジの作成に失敗しました')
+        setLoading(false)
+        return
+      }
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: totpFactor.id,
+        challengeId: challenge.id,
+        code,
+      })
+      if (verifyError) {
+        setError('コードが正しくありません。もう一度お試しください。')
+        setLoading(false)
+        return
+      }
+
+      router.push('/dashboard')
       router.refresh()
     } catch {
-      setError('ログインに失敗しました。')
+      setError('認証に失敗しました。')
       setLoading(false)
     }
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-indigo-600 via-blue-600 to-blue-700 flex items-center justify-center p-4">
-      {/* Subtle background pattern */}
+      {/* Background pattern */}
       <div className="absolute inset-0 opacity-10">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -64,7 +83,6 @@ export default function LoginPage() {
         </svg>
       </div>
 
-      {/* Decorative blobs */}
       <div className="absolute top-[-10%] right-[-5%] w-96 h-96 rounded-full bg-white/10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-5%] w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl pointer-events-none" />
 
@@ -81,84 +99,54 @@ export default function LoginPage() {
         {/* Card */}
         <Card className="border-0 bg-white/10 backdrop-blur-xl shadow-2xl shadow-black/20">
           <CardHeader className="pb-2 pt-7 px-7">
-            <h2 className="text-xl font-semibold text-white">ログイン</h2>
-            <p className="text-sm text-blue-100/70 mt-0.5">アカウント情報を入力してください</p>
+            <div className="flex items-center gap-2 mb-1">
+              <Shield className="w-5 h-5 text-white" />
+              <h2 className="text-xl font-semibold text-white">二要素認証</h2>
+            </div>
+            <p className="text-sm text-blue-100/70">認証アプリのコードを入力してください</p>
           </CardHeader>
 
           <CardContent className="px-7 pb-7">
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-              {/* Error message */}
               {error && (
                 <div className="rounded-lg bg-red-500/20 border border-red-400/30 px-4 py-3 text-sm text-red-100">
                   {error}
                 </div>
               )}
 
-              {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-blue-100 font-medium text-sm">
-                  メールアドレス
+                <Label htmlFor="code" className="text-blue-100 font-medium text-sm">
+                  認証コード（6桁）
                 </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="example@company.co.jp"
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
                   required
-                  autoComplete="email"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-blue-200/40 focus:border-white/50 focus:bg-white/15 h-11 transition-all duration-200"
+                  autoComplete="one-time-code"
+                  className="bg-white/10 border-white/20 text-white placeholder:text-blue-200/40 focus:border-white/50 focus:bg-white/15 h-11 font-mono tracking-widest text-center text-xl transition-all duration-200"
                 />
               </div>
 
-              {/* Password */}
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-blue-100 font-medium text-sm">
-                  パスワード
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoComplete="current-password"
-                    className="bg-white/10 border-white/20 text-white placeholder:text-blue-200/40 focus:border-white/50 focus:bg-white/15 h-11 pr-11 transition-all duration-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-200/60 hover:text-white transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Submit */}
               <Button
                 type="submit"
-                disabled={loading || !email || !password}
+                disabled={loading || code.length !== 6}
                 className="w-full h-11 mt-2 bg-white text-indigo-700 hover:bg-blue-50 font-semibold shadow-lg shadow-black/10 transition-all duration-200 disabled:opacity-50"
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>ログイン中...</span>
+                    <span>認証中...</span>
                   </>
                 ) : (
-                  'ログイン'
+                  '認証する'
                 )}
               </Button>
             </form>
-
           </CardContent>
         </Card>
 

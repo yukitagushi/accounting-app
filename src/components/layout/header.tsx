@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge'
 import { BranchSelector } from '@/components/shared/branch-selector'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useAuthStore } from '@/hooks/use-auth'
+import { ROLE_LABELS } from '@/lib/rbac'
 
 const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'ダッシュボード',
@@ -49,6 +51,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
   const breadcrumbs = getBreadcrumb(pathname)
+  const { user } = useAuthStore()
 
   async function handleLogout() {
     const supabase = createClient()
@@ -99,24 +102,28 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Avatar className="w-7 h-7">
             <AvatarFallback className="text-xs font-semibold bg-indigo-100 text-indigo-700">
-              田
+              {user?.displayName?.charAt(0) ?? '?'}
             </AvatarFallback>
           </Avatar>
           <div className="hidden md:block text-left">
-            <p className="text-xs font-semibold text-gray-800 leading-none">田中 太郎</p>
-            <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0 h-4 mt-1 bg-gray-100 text-gray-500 font-medium"
-            >
-              管理者
-            </Badge>
+            <p className="text-xs font-semibold text-gray-800 leading-none">
+              {user?.displayName ?? ''}
+            </p>
+            {user?.role && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 h-4 mt-1 bg-gray-100 text-gray-500 font-medium"
+              >
+                {ROLE_LABELS[user.role]}
+              </Badge>
+            )}
           </div>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-52">
           <div className="px-1.5 py-1 pb-1">
-            <p className="text-sm font-semibold text-gray-900">田中 太郎</p>
-            <p className="text-xs text-gray-500 font-normal mt-0.5">tanaka@company.co.jp</p>
+            <p className="text-sm font-semibold text-gray-900">{user?.displayName ?? ''}</p>
+            <p className="text-xs text-gray-500 font-normal mt-0.5">{user?.email ?? ''}</p>
           </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer gap-2 text-sm">

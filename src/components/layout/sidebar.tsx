@@ -17,14 +17,17 @@ import {
   Camera,
   Plus,
   ChevronDown,
+  Lock,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { BranchSelector } from '@/components/shared/branch-selector'
+import { useAuthStore } from '@/hooks/use-auth'
+import { ROLE_LABELS } from '@/lib/rbac'
 
 // ── Nav structure ─────────────────────────────────────────────────────────────
 
@@ -35,6 +38,7 @@ type NavItem = {
   href: string
   icon: React.ElementType
   subItems?: NavSubItem[]
+  requiresPermission?: 'canManageJournal' | 'canViewAccounting'
 }
 
 const navItems: NavItem[] = [
@@ -43,6 +47,7 @@ const navItems: NavItem[] = [
     label: '仕訳管理',
     href: '/journal',
     icon: BookOpen,
+    requiresPermission: 'canManageJournal',
     subItems: [
       { label: '仕訳一覧', href: '/journal', icon: BookOpen },
       { label: '新規仕訳', href: '/journal/new', icon: Plus },
@@ -53,8 +58,8 @@ const navItems: NavItem[] = [
   { label: '見積書', href: '/estimates', icon: FileText },
   { label: '顧客管理', href: '/customers', icon: Users },
   { label: '請求書', href: '/invoices', icon: Receipt },
-  { label: '会計管理', href: '/accounting', icon: Calculator },
-] as const
+  { label: '会計管理', href: '/accounting', icon: Calculator, requiresPermission: 'canViewAccounting' },
+]
 
 const bottomNavItems = [
   { label: '設定', href: '/settings', icon: Settings },
@@ -67,14 +72,20 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const { user, loadUser, can } = useAuthStore()
   const [expandedItems, setExpandedItems] = useState<Set<string>>(
-    // Auto-expand if currently in that section
     () => {
       const initial = new Set<string>()
       if (pathname.startsWith('/journal')) initial.add('/journal')
       return initial
     }
   )
+
+  useEffect(() => {
+    if (!user) {
+      loadUser()
+    }
+  }, [user, loadUser])
 
   function isActive(href: string) {
     if (href === '/journal') {
@@ -172,11 +183,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           const active = isActive(item.href)
           const hasSubItems = item.subItems && item.subItems.length > 0
           const expanded = expandedItems.has(item.href)
+          // If the item requires a permission, check it (only when user is loaded)
+          const locked = item.requiresPermission && user !== null
+            ? !can(item.requiresPermission)
+            : false
 
           return (
             <div key={item.href}>
               {/* Main item */}
-              {hasSubItems && !collapsed ? (
+              {hasSubItems && !collapsed && !locked ? (
                 <button
                   type="button"
                   onClick={() => toggleExpand(item.href)}
@@ -201,6 +216,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     )}
                   />
                 </button>
+              ) : locked ? (
+                <div
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium opacity-40 cursor-not-allowed',
+                    collapsed ? 'justify-center px-2' : ''
+                  )}
+                  title={collapsed ? `${item.label}（権限なし）` : undefined}
+                >
+                  <Icon className="w-4 h-4 shrink-0 text-gray-400" />
+                  {!collapsed && (
+                    <>
+                      <span className="truncate flex-1 text-gray-400">{item.label}</span>
+                      <Lock className="w-3 h-3 text-gray-300 shrink-0" />
+                    </>
+                  )}
+                </div>
               ) : (
                 <Link
                   href={item.href}
@@ -228,7 +259,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               )}
 
               {/* Sub-items */}
-              {hasSubItems && !collapsed && expanded && (
+              {hasSubItems && !collapsed && expanded && !locked && (
                 <div className="ml-3 mt-0.5 mb-1 pl-4 border-l border-gray-100 space-y-0.5">
                   {item.subItems!.map((sub) => {
                     const SubIcon = sub.icon
@@ -261,7 +292,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               )}
 
               {/* Collapsed: camera quick link for journal section */}
-              {hasSubItems && collapsed && active && (
+              {hasSubItems && collapsed && active && !locked && (
                 <Link
                   href="/journal/scan"
                   className="flex items-center justify-center w-full py-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors rounded-lg"
@@ -311,24 +342,28 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group">
             <Avatar className="w-7 h-7 shrink-0">
               <AvatarFallback className="text-xs font-semibold bg-indigo-100 text-indigo-700">
-                田
+                {user?.displayName?.charAt(0) ?? '?'}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-gray-800 truncate">田中 太郎</p>
-              <Badge
-                variant="secondary"
-                className="text-[10px] px-1.5 py-0 h-4 mt-0.5 bg-gray-100 text-gray-500 font-medium"
-              >
-                管理者
-              </Badge>
+              <p className="text-xs font-semibold text-gray-800 truncate">
+                {user?.displayName ?? '読み込み中...'}
+              </p>
+              {user?.role && (
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] px-1.5 py-0 h-4 mt-0.5 bg-gray-100 text-gray-500 font-medium"
+                >
+                  {ROLE_LABELS[user.role]}
+                </Badge>
+              )}
             </div>
           </div>
         ) : (
           <div className="flex justify-center py-1">
             <Avatar className="w-7 h-7">
               <AvatarFallback className="text-xs font-semibold bg-indigo-100 text-indigo-700">
-                田
+                {user?.displayName?.charAt(0) ?? '?'}
               </AvatarFallback>
             </Avatar>
           </div>

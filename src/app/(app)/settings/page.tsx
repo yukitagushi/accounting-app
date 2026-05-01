@@ -15,6 +15,7 @@ import {
   Download,
   Layers,
   CheckCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,7 @@ import {
   exportAccounts,
 } from '@/lib/csv-export'
 import type { Branch } from '@/lib/types'
+import { MfaSetup } from '@/components/auth/mfa-setup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ const TABS = [
   { id: 'credit-card', label: 'クレジットカード設定', icon: CreditCard },
   { id: 'fiscal-year', label: '会計期間', icon: Calendar },
   { id: 'data', label: 'データ管理', icon: Database },
+  { id: 'security', label: 'セキュリティ', icon: ShieldCheck },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -953,6 +956,11 @@ export default function SettingsPage() {
           {activeTab === 'credit-card' && <CreditCardTab />}
           {activeTab === 'fiscal-year' && <FiscalYearTab />}
           {activeTab === 'data' && <DataTab />}
+          {activeTab === 'security' && (
+            <div className="space-y-4">
+              <MfaSetup />
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
